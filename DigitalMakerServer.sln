@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerServer", "DigitalMakerServer\DigitalMakerServer.csproj", "{D70FCB5C-D7EB-4C62-8167-B59E44920BB2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerServer.Tests", "DigitalMakerServer.Tests\DigitalMakerServer.Tests.csproj", "{44B2C64B-4D27-4B8C-830C-A1CD7661FBD8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D70FCB5C-D7EB-4C62-8167-B59E44920BB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D70FCB5C-D7EB-4C62-8167-B59E44920BB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D70FCB5C-D7EB-4C62-8167-B59E44920BB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D70FCB5C-D7EB-4C62-8167-B59E44920BB2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44B2C64B-4D27-4B8C-830C-A1CD7661FBD8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44B2C64B-4D27-4B8C-830C-A1CD7661FBD8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44B2C64B-4D27-4B8C-830C-A1CD7661FBD8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44B2C64B-4D27-4B8C-830C-A1CD7661FBD8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {110A1119-EC63-43C6-8248-6402DA6C6255}
+	EndGlobalSection
+EndGlobal
