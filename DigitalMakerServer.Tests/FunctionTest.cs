@@ -8,7 +8,7 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.ApiGatewayManagementApi;
 using Amazon.ApiGatewayManagementApi.Model;
-
+using Amazon.DynamoDBv2.DataModel;
 
 namespace DigitalMakerServer.Tests;
 
@@ -33,7 +33,7 @@ public class FunctionTest
                 Assert.Equal(connectionId, request.Item[Functions.ConnectionIdField].S);
             });
 
-        var functions = new Functions(_mockDDBClient.Object, (endpoint) => _mockApiGatewayClient.Object, tableName);
+        var functions = new Functions(_mockDDBClient.Object, (endpoint) => _mockApiGatewayClient.Object, new Mock<IDynamoDBContext>().Object, tableName);
 
         var lambdaContext = new TestLambdaContext();
 
@@ -64,7 +64,7 @@ public class FunctionTest
                 Assert.Equal(connectionId, request.Key[Functions.ConnectionIdField].S);
             });
 
-        var functions = new Functions(_mockDDBClient.Object, (endpoint) => _mockApiGatewayClient.Object, tableName);
+        var functions = new Functions(_mockDDBClient.Object, (endpoint) => _mockApiGatewayClient.Object, new Mock<IDynamoDBContext>().Object, tableName);
 
         var lambdaContext = new TestLambdaContext();
 
@@ -118,7 +118,7 @@ public class FunctionTest
                 Assert.Equal(message, actualMessage);
             });
 
-        var functions = new Functions(_mockDDBClient.Object, apiGatewayFactory, tableName);
+        var functions = new Functions(_mockDDBClient.Object, apiGatewayFactory, new Mock<IDynamoDBContext>().Object, tableName);
 
         var lambdaContext = new TestLambdaContext();
 

@@ -9,6 +9,8 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.ApiGatewayManagementApi;
 using Amazon.ApiGatewayManagementApi.Model;
+using Amazon.DynamoDBv2.DataModel;
+using Amazon;
 
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -19,7 +21,8 @@ namespace DigitalMakerServer;
 public class Functions
 {
     public const string ConnectionIdField = "connectionId";
-    private const string TABLE_NAME_ENV = "TABLE_NAME";
+    private const string CONNECTION_TABLE_NAME_ENV = "CONNECTION_TABLE_NAME";
+    private const string INSTANCE_TABLE_NAME_ENV = "INSTANCE_TABLE_NAME";
 
     /// <summary>
     /// DynamoDB table used to store the open connection ids. More advanced use cases could store logged on user map to their connection id to implement direct message chatting.
@@ -37,21 +40,30 @@ public class Functions
     /// </summary>
     Func<string, IAmazonApiGatewayManagementApi> ApiGatewayManagementApiClientFactory { get; }
 
+    /// <summary>
+    /// DynamoDB context for the storage and retrieval of instance objects to the database
+    /// </summary>
+    IDynamoDBContext InstanceTableDDBContext { get; }
+
+    /// <summary>
+    /// Engine to perform the calculations and operations for the instance
+    /// </summary>
+    IDigitalMakerEngine DigitalMakerEngine { get; }
 
     /// <summary>
     /// Default constructor that Lambda will invoke.
     /// </summary>
     public Functions()
     {
-        DDBClient = new AmazonDynamoDBClient();
+        this.DDBClient = new AmazonDynamoDBClient();
 
-        // Grab the name of the DynamoDB from the environment variable setup in the CloudFormation template serverless.template
-        if(Environment.GetEnvironmentVariable(TABLE_NAME_ENV) == null)
+        // Grab the name of the connection DynamoDB table from the environment variable setup in the CloudFormation template serverless.template
+        if (Environment.GetEnvironmentVariable(CONNECTION_TABLE_NAME_ENV) == null)
         {
-            throw new ArgumentException($"Missing required environment variable {TABLE_NAME_ENV}");
+            throw new ArgumentException($"Missing required connection table environment variable {CONNECTION_TABLE_NAME_ENV}");
         }
 
-        ConnectionMappingTable = Environment.GetEnvironmentVariable(TABLE_NAME_ENV) ?? "";
+        this.ConnectionMappingTable = Environment.GetEnvironmentVariable(CONNECTION_TABLE_NAME_ENV) ?? "";
 
         this.ApiGatewayManagementApiClientFactory = (Func<string, AmazonApiGatewayManagementApiClient>)((endpoint) => 
         {
@@ -60,6 +72,19 @@ public class Functions
                 ServiceURL = endpoint
             });
         });
+
+        // Now check to see if an instances table name was passed in through environment variables and if so 
+        // add the table mapping.
+        var instanceTableName = System.Environment.GetEnvironmentVariable(INSTANCE_TABLE_NAME_ENV);
+        if (!string.IsNullOrEmpty(instanceTableName))
+        {
+            AWSConfigsDynamoDB.Context.TypeMappings[typeof(InstanceStorage)] = new Amazon.Util.TypeMapping(typeof(InstanceStorage), instanceTableName);
+        }
+        var config = new DynamoDBContextConfig { Conversion = DynamoDBEntryConversion.V2 };
+        this.InstanceTableDDBContext = new DynamoDBContext(this.DDBClient, config);
+
+        // New up a digital maker engine for use in the lifetime of this running
+        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext);
     }
 
     /// <summary>
@@ -68,11 +93,16 @@ public class Functions
     /// <param name="ddbClient"></param>
     /// <param name="apiGatewayManagementApiClientFactory"></param>
     /// <param name="connectionMappingTable"></param>
-    public Functions(IAmazonDynamoDB ddbClient, Func<string, IAmazonApiGatewayManagementApi> apiGatewayManagementApiClientFactory, string connectionMappingTable)
+    public Functions(IAmazonDynamoDB ddbClient,
+        Func<string, IAmazonApiGatewayManagementApi> apiGatewayManagementApiClientFactory,
+        IDynamoDBContext instanceTableDDBContext,
+        string connectionMappingTable)
     {
         this.DDBClient = ddbClient;
         this.ApiGatewayManagementApiClientFactory = apiGatewayManagementApiClientFactory;
+        this.InstanceTableDDBContext = instanceTableDDBContext;
         this.ConnectionMappingTable = connectionMappingTable;
+        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext);
     }
 
     public async Task<APIGatewayProxyResponse> OnConnectHandler(APIGatewayProxyRequest request, ILambdaContext context)

@@ -5,12 +5,26 @@
   "Parameters": {
     "ConnectionMappingTableName": {
       "Type": "String",
-      "Default": "SimpleChatConnections",
+      "Default": "DigitalMakerConnections",
       "Description": "The name of the new DynamoDB to store connection identifiers for each connected clients. Minimum 3 characters.",
       "MinLength": "3",
       "MaxLength": "50",
       "AllowedPattern": "^[A-Za-z_]+$"
+    },
+    "ShouldCreateTable" : {
+      "Type" : "String",        
+      "AllowedValues" : ["true", "false"],
+      "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
+    },
+    "InstanceTableName" : {
+        "Type" : "String",
+        "Description" : "Name of DynamoDB table used to store the token. If left blank a new table will be created.",
+        "MinLength" : "0"
     }
+  },
+  "Conditions" : {
+    "CreateInstanceTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateTable"}, "true"]},
+	  "TableNameGenerated" : {"Fn::Equals" : [{"Ref" : "InstanceTableName"}, ""]}
   },
   "Resources": {
     "ConnectionMappingTable": {
@@ -122,10 +136,10 @@
         }
       }
     },
-    "SimpleChatWebSocketApi": {
+    "DigitalMakerWebSocketApi": {
       "Type": "AWS::ApiGatewayV2::Api",
       "Properties": {
-        "Name": "SimpleChatWebSocket",
+        "Name": "DigitalMakerWebSocket",
         "ProtocolType": "WEBSOCKET",
         "RouteSelectionExpression": "$request.body.message"
       }
@@ -134,7 +148,7 @@
       "Type": "AWS::ApiGatewayV2::Route",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "RouteKey": "$connect",
         "AuthorizationType": "NONE",
@@ -156,7 +170,7 @@
       "Type": "AWS::ApiGatewayV2::Integration",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
@@ -181,7 +195,7 @@
       "Type": "AWS::ApiGatewayV2::Route",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "RouteKey": "$disconnect",
         "AuthorizationType": "NONE",
@@ -203,7 +217,7 @@
       "Type": "AWS::ApiGatewayV2::Integration",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
@@ -228,7 +242,7 @@
       "Type": "AWS::ApiGatewayV2::Route",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "RouteKey": "sendmessage",
         "AuthorizationType": "NONE",
@@ -250,7 +264,7 @@
       "Type": "AWS::ApiGatewayV2::Integration",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "IntegrationType": "AWS_PROXY",
         "IntegrationUri": {
@@ -280,7 +294,7 @@
       ],
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         }
       }
     },
@@ -288,7 +302,7 @@
       "Type": "AWS::ApiGatewayV2::Stage",
       "Properties": {
         "ApiId": {
-          "Ref": "SimpleChatWebSocketApi"
+          "Ref": "DigitalMakerWebSocketApi"
         },
         "DeploymentId": {
           "Ref": "Deployment"
@@ -300,7 +314,7 @@
       "Type": "AWS::Lambda::Permission",
       "DependsOn": [
         "OnConnectFunction",
-        "SimpleChatWebSocketApi"
+        "DigitalMakerWebSocketApi"
       ],
       "Properties": {
         "Action": "lambda:InvokeFunction",
@@ -314,7 +328,7 @@
       "Type": "AWS::Lambda::Permission",
       "DependsOn": [
         "OnDisconnectFunction",
-        "SimpleChatWebSocketApi"
+        "DigitalMakerWebSocketApi"
       ],
       "Properties": {
         "Action": "lambda:InvokeFunction",
@@ -328,7 +342,7 @@
       "Type": "AWS::Lambda::Permission",
       "DependsOn": [
         "SendMessageFunction",
-        "SimpleChatWebSocketApi"
+        "DigitalMakerWebSocketApi"
       ],
       "Properties": {
         "Action": "lambda:InvokeFunction",
@@ -336,6 +350,20 @@
           "Ref": "SendMessageFunction"
         },
         "Principal": "apigateway.amazonaws.com"
+      }
+    },
+    "InstanceTable" : {
+        "Type": "AWS::DynamoDB::Table",
+        "Condition" : "CreateInstanceTable",
+        "Properties" : {
+          "TableName" : { "Fn::If" : ["TableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "InstanceTableName" } ] },
+          "AttributeDefinitions" : [
+            {"AttributeName" : "Id", "AttributeType" : "S"}
+          ],
+          "KeySchema"            : [
+            {"AttributeName" : "Id", "KeyType" : "HASH"}
+          ],
+        "BillingMode": "PAY_PER_REQUEST"
       }
     }
   },
@@ -347,7 +375,7 @@
           [
             "wss://",
             {
-              "Ref": "SimpleChatWebSocketApi"
+              "Ref": "DigitalMakerWebSocketApi"
             },
             ".execute-api.",
             {
