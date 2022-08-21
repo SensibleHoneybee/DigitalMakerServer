@@ -2,7 +2,10 @@
   "profiles": {
     "DigitalMakerWorkerApp": {
       "commandName": "Project",
-      "commandLineArgs": ""
+      "dotnetRunMessages": true,
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
     }
   }
 }
