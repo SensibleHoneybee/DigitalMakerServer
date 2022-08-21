@@ -2,28 +2,23 @@ namespace DigitalMakerWorkerApp;
 
 public sealed class WindowsBackgroundService : BackgroundService
 {
-    private readonly WebSocketServiceFactory _webSocketServiceFactory;
+    private readonly WebSocketService _webSocketService;
     private readonly ILogger<WindowsBackgroundService> _logger;
 
     public WindowsBackgroundService(
-        WebSocketServiceFactory webSocketServiceFactory,
+        WebSocketService webSocketService,
         ILogger<WindowsBackgroundService> logger) =>
-        (_webSocketServiceFactory, _logger) = (webSocketServiceFactory, logger);
+        (_webSocketService, _logger) = (webSocketService, logger);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                ////string webSocket = _webSocketService.GetJoke();
-                ////_logger.LogWarning("{Joke}", joke);
-                ///
+            _logger.LogInformation("WindowsBackgroundService: starting web socket client");
 
-                _logger.LogInformation("Fish pie");
+            ////this._webSocketService = this._webSocketService.Create(url);
 
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-            }
+            await this._webSocketService.OpenConnectionAsync(stoppingToken);
         }
         catch (Exception ex)
         {

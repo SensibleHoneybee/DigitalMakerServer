@@ -1,26 +1,32 @@
 ﻿using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 
 namespace DigitalMakerWorkerApp
 {
     public class WebSocketService
     {
-        private readonly string _url;
         private readonly ILogger<WebSocketService> _logger;
         private readonly ClientWebSocket _wsClient = new ClientWebSocket();
 
-        public WebSocketService(string url, ILogger<WebSocketService> logger)
+        public WebSocketService(ILogger<WebSocketService> logger)
         {
-            this._url = url;
             this._logger = logger;
         }
 
         public async Task OpenConnectionAsync(CancellationToken token)
         {
+            var secretsData = GetDataFromSecretsFile();
+
+            if (secretsData == null)
+            {
+                return;
+            }
+
             //Set keep alive interval
             this._wsClient.Options.KeepAliveInterval = TimeSpan.Zero;
 
-            await this._wsClient.ConnectAsync(new Uri(_url), token).ConfigureAwait(false);
+            await this._wsClient.ConnectAsync(new Uri(secretsData.Url), token).ConfigureAwait(false);
         }
 
         //Send message
@@ -64,5 +70,51 @@ namespace DigitalMakerWorkerApp
                 // Your logic if state is different than `WebSocketState.Open`
             }
         }
+
+        private Secrets? GetDataFromSecretsFile()
+        {
+            var homePath = (Environment.OSVersion.Platform == PlatformID.Unix || Environment.OSVersion.Platform == PlatformID.MacOSX)
+                            ? Environment.GetEnvironmentVariable("HOME")
+                            : Environment.ExpandEnvironmentVariables("%HOMEDRIVE%%HOMEPATH%");
+            if (homePath == null)
+            {
+                return null;
+            }
+
+            var secretsFileLocation = Path.Combine(homePath, @"source\repos\Secrets.json");
+            var secrets = File.ReadAllText(secretsFileLocation);
+
+            JsonDocument message = JsonDocument.Parse(secrets);
+
+            JsonElement digitalMakerUrlProperty;
+            if (!message.RootElement.TryGetProperty("DigitalMakerUrl", out digitalMakerUrlProperty))
+            {
+                _logger.LogWarning("Failed to find DigitalMakerUrl element in Secrets JSON document");
+                return null;
+            }
+            var digitalMakerUrl = digitalMakerUrlProperty.GetString();
+            if (string.IsNullOrWhiteSpace(digitalMakerUrl))
+            {
+                _logger.LogWarning("DigitalMakerUrl element in Secrets JSON document is blank");
+                return null;
+            }
+
+            JsonElement authenticationTokenProperty;
+            if (!message.RootElement.TryGetProperty("AuthenticationToken", out authenticationTokenProperty))
+            {
+                _logger.LogWarning("Failed to find AuthenticationToken element in Secrets JSON document");
+                return null;
+            }
+            var authenticationToken = authenticationTokenProperty.GetString();
+            if (string.IsNullOrWhiteSpace(authenticationToken))
+            {
+                _logger.LogWarning("AuthenticationToken element in Secrets JSON document is blank");
+                return null;
+            }
+
+            return new Secrets(digitalMakerUrl, authenticationToken);
+        }
+
+        private record Secrets(string Url, string AuthenticationToken);
     }
 }

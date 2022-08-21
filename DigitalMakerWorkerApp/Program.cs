@@ -12,7 +12,7 @@ using IHost host = Host.CreateDefaultBuilder(args)
         LoggerProviderOptions.RegisterProviderOptions<
             EventLogSettings, EventLogLoggerProvider>(services);
 
-        services.AddSingleton<WebSocketServiceFactory>();
+        services.AddSingleton<WebSocketService>();
         services.AddHostedService<WindowsBackgroundService>();
     })
     .ConfigureLogging((context, logging) =>
