@@ -4,7 +4,7 @@ namespace DigitalMakerApi.Models
 {
     public class Instance
     {
-        public string Id { get; set; } = string.Empty;
+        public string InstanceId { get; set; } = string.Empty;
 
         public string InstanceName { get; set; } = string.Empty;
 
