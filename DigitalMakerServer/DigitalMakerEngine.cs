@@ -1,5 +1,6 @@
 ﻿using Amazon.DynamoDBv2.DataModel;
 using Amazon.Lambda.Core;
+using DigitalMakerApi;
 using DigitalMakerApi.Models;
 using DigitalMakerApi.Requests;
 using DigitalMakerApi.Responses;
@@ -16,7 +17,7 @@ namespace DigitalMakerServer
 
         IDynamoDBContext InstanceTableDDBContext { get; }
 
-        public async Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
+        public async Task<List<RootResponse>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.InstanceId))
             {
@@ -57,7 +58,7 @@ namespace DigitalMakerServer
             var response = new InstanceCreatedResponse { InstanceId = request.InstanceId };
 
             // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            return new[] { new RootResponse(response, connectionId) }.ToList();
         }
     }
 }

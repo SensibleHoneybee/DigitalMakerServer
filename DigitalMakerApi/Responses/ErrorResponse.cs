@@ -7,6 +7,6 @@ namespace DigitalMakerApi.Responses
         public string Message { get; set; } = string.Empty;
 
         [JsonIgnore]
-        public string GetResponseType => ResponseType.Error;
+        public string ResponseType => DigitalMakerResponseType.Error;
     }
 }

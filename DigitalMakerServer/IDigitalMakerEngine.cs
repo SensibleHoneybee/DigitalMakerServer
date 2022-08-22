@@ -1,11 +1,11 @@
 ﻿using Amazon.Lambda.Core;
+using DigitalMakerApi;
 using DigitalMakerApi.Requests;
-using DigitalMakerApi.Responses;
 
 namespace DigitalMakerServer
 {
     public interface IDigitalMakerEngine
     {
-        Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger);
+        Task<List<RootResponse>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger);
     }
 }

@@ -1,6 +1,6 @@
-﻿namespace DigitalMakerApi.Responses
+﻿namespace DigitalMakerApi
 {
-    public static class ResponseType
+    public static class DigitalMakerResponseType
     {
         public const string InstanceCreated = "InstanceCreated";
 

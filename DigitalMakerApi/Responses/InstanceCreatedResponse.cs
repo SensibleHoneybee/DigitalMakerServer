@@ -7,6 +7,6 @@ namespace DigitalMakerApi.Responses
         public string InstanceId { get; set; } = string.Empty;
 
         [JsonIgnore]
-        public string GetResponseType => ResponseType.InstanceCreated;
+        public string ResponseType => DigitalMakerResponseType.InstanceCreated;
     }
 }

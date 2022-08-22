@@ -11,6 +11,10 @@ using Amazon.ApiGatewayManagementApi;
 using Amazon.ApiGatewayManagementApi.Model;
 using Amazon.DynamoDBv2.DataModel;
 using Amazon;
+using Newtonsoft.Json;
+using DigitalMakerApi;
+using DigitalMakerApi.Requests;
+using DigitalMakerApi.Responses;
 
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -22,7 +26,7 @@ public class Functions
 {
     public const string ConnectionIdField = "connectionId";
     private const string CONNECTION_TABLE_NAME_ENV = "CONNECTION_TABLE_NAME";
-    private const string INSTANCE_TABLE_NAME_ENV = "INSTANCE_TABLE_NAME";
+    private const string INSTANCE_TABLE_NAME_ENV = "InstanceTable";
 
     /// <summary>
     /// DynamoDB table used to store the open connection ids. More advanced use cases could store logged on user map to their connection id to implement direct message chatting.
@@ -150,91 +154,122 @@ public class Functions
             var domainName = request.RequestContext.DomainName;
             var stage = request.RequestContext.Stage;
             var endpoint = $"https://{domainName}/{stage}";
-            context.Logger.LogInformation($"API Gateway management endpoint: {endpoint}");
+            context.Logger.LogLine($"API Gateway management endpoint: {endpoint}");
 
-            // The body will look something like this: {"message":"sendmessage", "data":"What are you doing?"}
-            JsonDocument message = JsonDocument.Parse(request.Body);
+            var connectionId = request.RequestContext.ConnectionId;
+            context.Logger.LogLine($"ConnectionId: {connectionId}");
 
-            // Grab the data from the JSON body which is the message to broadcasted.
-            JsonElement dataProperty;
-            if (!message.RootElement.TryGetProperty("data", out dataProperty) || dataProperty.GetString() == null)
+            try
             {
-                context.Logger.LogInformation("Failed to find data element in JSON document");
+                JsonDocument message = JsonDocument.Parse(request.Body);
+
+                // Grab the data from the JSON body which is the message to broadcasted.
+                // As defined in the CloudWatch serverless template, the route is "sendmessage". Thus
+                // The body will look something like this: {"message":"sendmessage", "data":"What are you doing?"}
+                JsonElement dataProperty;
+                if (!message.RootElement.TryGetProperty("data", out dataProperty))
+                {
+                    context.Logger.LogLine("Failed to find data element in JSON document");
+                    return new APIGatewayProxyResponse
+                    {
+                        StatusCode = (int)HttpStatusCode.BadRequest
+                    };
+                }
+
+                var data = dataProperty.GetString();
+                if (string.IsNullOrWhiteSpace(data))
+                {
+                    context.Logger.LogLine("JSON data element has no content");
+                    return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                }
+                context.Logger.LogLine($"JSON Data: {data}");
+
+                var rootRequest = JsonConvert.DeserializeObject<RootRequest>(data);
+                if (rootRequest == null || string.IsNullOrEmpty(rootRequest.RequestType) || string.IsNullOrEmpty(rootRequest.Content))
+                {
+                    context.Logger.LogLine("JSON data element did not contain a valid request, with a type and content");
+                    return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                }
+
+                context.Logger.LogLine($"Send Message Request. Type: {rootRequest.RequestType}. Content: {rootRequest.Content}");
+
+                List<RootResponse> responsesWithClientIds;
+                switch (rootRequest.RequestType)
+                {
+                    case RequestType.CreateInstance:
+                        var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(rootRequest.Content);
+                        if (createInstanceRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid CreateInstanceRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
+                        break;
+                    default:
+                        throw new Exception($"Unknown message request type: {rootRequest.RequestType}");
+                }
+
+                context.Logger.LogLine($"Game responses: {responsesWithClientIds.Count}");
+
+                // List all of the current connections. In a more advanced use case the table could be used to grab a group of connection ids for a chat group.
+                var scanRequest = new ScanRequest
+                {
+                    TableName = ConnectionMappingTable,
+                    ProjectionExpression = ConnectionIdField
+                };
+
+                var scanResponse = await DDBClient.ScanAsync(scanRequest);
+
+                // Construct the IAmazonApiGatewayManagementApi which will be used to send the message to.
+                var apiClient = ApiGatewayManagementApiClientFactory(endpoint);
+
+                var responsesByClientId = responsesWithClientIds.GroupBy(x => x.ClientId).ToDictionary(x => x.Key, x => x.Select(x => x.Response).ToList());
+
+                // Loop through all of the connections and broadcast the message out to the connections.
+                var count = 0;
+                foreach (var item in scanResponse.Items)
+                {
+                    var connectedClientConnectionId = item[ConnectionIdField].S;
+
+                    List<IResponse> responses;
+                    if (!responsesByClientId.TryGetValue(connectedClientConnectionId, out responses))
+                    {
+                        // This connection isn't amongst those to receive a message response.
+                        continue;
+                    }
+
+                    foreach (var response in responses)
+                    {
+                        var encodedResponse = new { ResponseType = response.ResponseType, Content = JsonConvert.SerializeObject(response) };
+                        var responseJson = JsonConvert.SerializeObject(encodedResponse);
+                        context.Logger.LogLine($"Sending JSON response {responseJson} to client {connectedClientConnectionId}.");
+
+                        await SendMessageToClient(connectedClientConnectionId, responseJson, apiClient, context);
+
+                        count++;
+                    }
+                }
+
                 return new APIGatewayProxyResponse
                 {
-                    StatusCode = (int)HttpStatusCode.BadRequest
+                    StatusCode = (int)HttpStatusCode.OK,
+                    Body = "Data sent to " + count + " connection" + (count == 1 ? "" : "s")
                 };
             }
-
-            var data = dataProperty.GetString() ?? "";
-            var stream = new MemoryStream(UTF8Encoding.UTF8.GetBytes(data));
-
-            // List all of the current connections. In a more advanced use case the table could be used to grab a group of connection ids for a chat group.
-            var scanRequest = new ScanRequest
+            catch (Exception e1)
             {
-                TableName = ConnectionMappingTable,
-                ProjectionExpression = ConnectionIdField
-            };
-
-            var scanResponse = await DDBClient.ScanAsync(scanRequest);
-
-            // Construct the IAmazonApiGatewayManagementApi which will be used to send the message to.
-            var apiClient = ApiGatewayManagementApiClientFactory(endpoint);
-
-            // Loop through all of the connections and broadcast the message out to the connections.
-            var count = 0;
-            foreach (var item in scanResponse.Items)
-            {
-                var postConnectionRequest = new PostToConnectionRequest
-                {
-                    ConnectionId = item[ConnectionIdField].S,
-                    Data = stream
-                };
-
-                try
-                {
-                    context.Logger.LogInformation($"Post to connection {count}: {postConnectionRequest.ConnectionId}");
-                    stream.Position = 0;
-                    await apiClient.PostToConnectionAsync(postConnectionRequest);
-                    count++;
-                }
-                catch (AmazonServiceException e)
-                {
-                    // API Gateway returns a status of 410 GONE then the connection is no
-                    // longer available. If this happens, delete the identifier
-                    // from our DynamoDB table.
-                    if (e.StatusCode == HttpStatusCode.Gone)
-                    {
-                        var ddbDeleteRequest = new DeleteItemRequest
-                        {
-                            TableName = ConnectionMappingTable,
-                            Key = new Dictionary<string, AttributeValue>
-                            {
-                                {ConnectionIdField, new AttributeValue {S = postConnectionRequest.ConnectionId}}
-                            }
-                        };
-
-                        context.Logger.LogInformation($"Deleting gone connection: {postConnectionRequest.ConnectionId}");
-                        await DDBClient.DeleteItemAsync(ddbDeleteRequest);
-                    }
-                    else
-                    {
-                        context.Logger.LogInformation($"Error posting message to {postConnectionRequest.ConnectionId}: {e.Message}");
-                        context.Logger.LogInformation(e.StackTrace);
-                    }
-                }
+                var apiClient = ApiGatewayManagementApiClientFactory(endpoint);
+                var errorResponse = new ErrorResponse { Message = e1.Message };
+                var encodedResponse = new { ResponseType = errorResponse.ResponseType, Content = JsonConvert.SerializeObject(errorResponse) };
+                var responseJson = JsonConvert.SerializeObject(encodedResponse);
+                await SendMessageToClient(connectionId, responseJson, apiClient, context);
+                throw;
             }
-
-            return new APIGatewayProxyResponse
-            {
-                StatusCode = (int)HttpStatusCode.OK,
-                Body = "Data sent to " + count + " connection" + (count == 1 ? "" : "s")
-            };
         }
         catch (Exception e)
         {
-            context.Logger.LogInformation("Error disconnecting: " + e.Message);
-            context.Logger.LogInformation(e.StackTrace);
+            context.Logger.LogLine("Error in send message handler: " + e.Message);
+            context.Logger.LogLine(e.StackTrace);
             return new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.InternalServerError,
@@ -276,6 +311,49 @@ public class Functions
                 StatusCode = 500,
                 Body = $"Failed to disconnect: {e.Message}"
             };
+        }
+    }
+
+    private async Task SendMessageToClient(string connectionId, string responseJson, IAmazonApiGatewayManagementApi apiClient, ILambdaContext context)
+    {
+        var stream = new MemoryStream(UTF8Encoding.UTF8.GetBytes(responseJson));
+
+        var postConnectionRequest = new PostToConnectionRequest
+        {
+            ConnectionId = connectionId,
+            Data = stream
+        };
+
+        try
+        {
+            context.Logger.LogLine($"Post to connection: {postConnectionRequest.ConnectionId}");
+            stream.Position = 0;
+            await apiClient.PostToConnectionAsync(postConnectionRequest);
+        }
+        catch (AmazonServiceException e)
+        {
+            // API Gateway returns a status of 410 GONE then the connection is no
+            // longer available. If this happens, delete the identifier
+            // from our DynamoDB table.
+            if (e.StatusCode == HttpStatusCode.Gone)
+            {
+                var ddbDeleteRequest = new DeleteItemRequest
+                {
+                    TableName = ConnectionMappingTable,
+                    Key = new Dictionary<string, AttributeValue>
+                                {
+                                    {ConnectionIdField, new AttributeValue {S = postConnectionRequest.ConnectionId}}
+                                }
+                };
+
+                context.Logger.LogLine($"Deleting gone connection: {postConnectionRequest.ConnectionId}");
+                await DDBClient.DeleteItemAsync(ddbDeleteRequest);
+            }
+            else
+            {
+                context.Logger.LogLine($"Error posting message to {postConnectionRequest.ConnectionId}: {e.Message}");
+                context.Logger.LogLine(e.StackTrace);
+            }
         }
     }
 }

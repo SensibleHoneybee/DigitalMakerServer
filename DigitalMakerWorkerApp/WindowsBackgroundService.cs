@@ -1,3 +1,7 @@
+using DigitalMakerApi;
+using DigitalMakerApi.Requests;
+using Newtonsoft.Json;
+
 namespace DigitalMakerWorkerApp;
 
 public sealed class WindowsBackgroundService : BackgroundService
@@ -19,6 +23,17 @@ public sealed class WindowsBackgroundService : BackgroundService
             ////this._webSocketService = this._webSocketService.Create(url);
 
             await this._webSocketService.OpenConnectionAsync(stoppingToken);
+
+            this._webSocketService.HandleMessagesAsync(stoppingToken).ContinueWith(t => Console.WriteLine(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+
+            var createInstanceRequest = new CreateInstanceRequest
+            {
+                InstanceId = Guid.NewGuid().ToString(),
+                InstanceName = "Test Instance 1"
+            };
+            var rootRequest = new RootRequest { RequestType = RequestType.CreateInstance, Content = JsonConvert.SerializeObject(createInstanceRequest) };
+            var webSocketRequest = new { message = "sendmessage", data = JsonConvert.SerializeObject(rootRequest) };
+            await this._webSocketService.SendAsync(JsonConvert.SerializeObject(webSocketRequest), stoppingToken);
         }
         catch (Exception ex)
         {

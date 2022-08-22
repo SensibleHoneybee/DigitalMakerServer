@@ -2,6 +2,6 @@
 {
     public interface IResponse
     {
-        string GetResponseType { get; }
+        string ResponseType { get; }
     }
 }

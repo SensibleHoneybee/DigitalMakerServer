@@ -120,6 +120,13 @@
             }
           },
           {
+            "DynamoDBCrudPolicy": {
+              "TableName": {
+                "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ]
+              }
+            }
+          },
+          {
             "Statement": {
               "Effect": "Allow",
               "Action": "execute-api:ManageConnections",
@@ -129,9 +136,8 @@
         ],
         "Environment": {
           "Variables": {
-            "CONNECTION_TABLE_NAME": {
-              "Ref": "ConnectionMappingTableName"
-            }
+            "CONNECTION_TABLE_NAME": { "Ref": "ConnectionMappingTableName" },
+            "InstanceTable" : { "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ] }
           }
         }
       }
