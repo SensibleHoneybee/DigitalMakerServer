@@ -68,7 +68,7 @@
         ],
         "Environment": {
           "Variables": {
-            "TABLE_NAME": {
+            "CONNECTION_TABLE_NAME": {
               "Ref": "ConnectionMappingTableName"
             }
           }
@@ -95,7 +95,7 @@
         ],
         "Environment": {
           "Variables": {
-            "TABLE_NAME": {
+            "CONNECTION_TABLE_NAME": {
               "Ref": "ConnectionMappingTableName"
             }
           }
@@ -129,7 +129,7 @@
         ],
         "Environment": {
           "Variables": {
-            "TABLE_NAME": {
+            "CONNECTION_TABLE_NAME": {
               "Ref": "ConnectionMappingTableName"
             }
           }
