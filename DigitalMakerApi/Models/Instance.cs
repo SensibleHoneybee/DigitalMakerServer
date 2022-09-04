@@ -13,5 +13,9 @@ namespace DigitalMakerApi.Models
         /// </summary>
 
         public string InstanceState { get; set; } = string.Empty;
+
+        public List<Variable> Variables { get; set; } = new List<Variable>();
+
+        public List<InputEventHandler> InputEventHandlers { get; set; } = new List<InputEventHandler>();
     }
 }

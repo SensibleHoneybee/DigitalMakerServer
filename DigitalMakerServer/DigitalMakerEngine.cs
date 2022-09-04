@@ -35,7 +35,7 @@ namespace DigitalMakerServer
 
             var instance = new Instance
             {
-                Id = request.InstanceId,
+                InstanceId = request.InstanceId,
                 InstanceName = request.InstanceName,
                 ////InstanceCode = instanceCode,
                 InstanceState = InstanceState.NotRunning

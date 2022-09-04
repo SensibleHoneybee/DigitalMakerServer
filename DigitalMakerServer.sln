@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerApi", "DigitalM
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerWorkerApp", "DigitalMakerWorkerApp\DigitalMakerWorkerApp.csproj", "{6760EFFF-B42D-41BF-A31A-BC0E6830FCB6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DigitalMakerWorkerApp.Tests", "DigitalMakerWorkerApp.Tests\DigitalMakerWorkerApp.Tests.csproj", "{C6AD3357-574B-4E54-8F53-19BABB108E73}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{6760EFFF-B42D-41BF-A31A-BC0E6830FCB6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6760EFFF-B42D-41BF-A31A-BC0E6830FCB6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6760EFFF-B42D-41BF-A31A-BC0E6830FCB6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C6AD3357-574B-4E54-8F53-19BABB108E73}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6AD3357-574B-4E54-8F53-19BABB108E73}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6AD3357-574B-4E54-8F53-19BABB108E73}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6AD3357-574B-4E54-8F53-19BABB108E73}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
