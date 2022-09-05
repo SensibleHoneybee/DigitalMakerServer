@@ -11,14 +11,20 @@ namespace DigitalMakerWorkerApp.Tests
         [Fact]
         public async Task TestRunPythonScript()
         {
+            var mockLogger0 = new Mock<ILogger<PythonScriptProvider>>();
             var mockLogger1 = new Mock<ILogger<PythonScriptGateway>>();
             var mockLogger2 = new Mock<ILogger<PythonScriptRunner>>();
             var mockLogger3 = new Mock<ILogger<PythonVariableDefinitionProvider>>();
 
+            var pythonScriptProvider = new PythonScriptProvider(mockLogger0.Object);
             var pythonScriptGateway = new PythonScriptGateway(mockLogger1.Object);
             var pythonVariableDefinitionProvider = new PythonVariableDefinitionProvider(mockLogger3.Object);
 
-            var pythonScriptRunner = new PythonScriptRunner(pythonScriptGateway, pythonVariableDefinitionProvider, mockLogger2.Object);
+            var pythonScriptRunner = new PythonScriptRunner(
+                pythonScriptProvider,
+                pythonScriptGateway,
+                pythonVariableDefinitionProvider,
+                mockLogger2.Object);
 
             var userSuppliedPythonCode = string.Empty;
 
@@ -28,9 +34,9 @@ namespace DigitalMakerWorkerApp.Tests
                 {
                     new Variable
                     {
-                        Name = "Tom",
-                        VariableType = "Dick",
-                        Value = "Harry"
+                        Name = "fish_and_chips",
+                        VariableType = VariableType.String,
+                        Value = "Mushy peas"
                     }
                 }
             };

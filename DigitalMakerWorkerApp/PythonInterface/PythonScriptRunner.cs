@@ -10,16 +10,21 @@ namespace DigitalMakerWorkerApp.PythonInterface
 
     public class PythonScriptRunner : IPythonScriptRunner
     {
+        private readonly IPythonScriptProvider _pythonScriptProvider;
+
         private readonly IPythonScriptGateway _pythonScriptGateway;
 
         private readonly IPythonVariableDefinitionProvider _pythonVariableDefinitionProvider;
 
         private readonly ILogger<PythonScriptRunner> _logger;
 
-        public PythonScriptRunner(IPythonScriptGateway pythonScriptGateway,
+        public PythonScriptRunner(
+            IPythonScriptProvider pythonScriptProvider,
+            IPythonScriptGateway pythonScriptGateway,
             IPythonVariableDefinitionProvider pythonVariableDefinitionProvider,
             ILogger<PythonScriptRunner> logger)
         {
+            this._pythonScriptProvider = pythonScriptProvider;
             this._pythonScriptGateway = pythonScriptGateway;
             this._pythonVariableDefinitionProvider = pythonVariableDefinitionProvider;
             this._logger = logger;
@@ -27,7 +32,7 @@ namespace DigitalMakerWorkerApp.PythonInterface
 
         public Task<string> RunPythonProcessAsync(string userSuppliedPythonCode, PythonInputData pythonInputData, CancellationToken stoppingToken)
         {
-            var defaultPythonScript = this.ReadDefaultScript();
+            var defaultPythonScript = this._pythonScriptProvider.GetPythonScript();
 
             // Construct python initializers for the variables
             var variableDefinitions = new StringBuilder();
@@ -37,34 +42,9 @@ namespace DigitalMakerWorkerApp.PythonInterface
                 variableDefinitions.AppendLine(definition);
             }
 
-            var actualPythonScript = string.Format(defaultPythonScript, userSuppliedPythonCode);
+            var actualPythonScript = string.Format(defaultPythonScript, variableDefinitions.ToString(), userSuppliedPythonCode);
 
             return this._pythonScriptGateway.RunPythonProcessAsync(actualPythonScript, stoppingToken);
-        }
-
-        private string ReadDefaultScript()
-        {
-            var assembly = typeof(PythonScriptRunner).GetTypeInfo().Assembly;
-            var manifestResourceNames = assembly.GetManifestResourceNames().Where(x => x.Contains("DefaultScript.py")).ToList();
-            if (manifestResourceNames.Count != 1)
-            {
-                var msg = $"Expected one embedded resource file DefaultScript.py, but instead found {manifestResourceNames.Count}.";
-                this._logger.LogError(msg);
-                throw new InvalidOperationException(msg);
-            }
-
-            var pythonStream = assembly.GetManifestResourceStream(manifestResourceNames.Single());
-            if (pythonStream == null)
-            {
-                var msg = $"Unexpectedly failed to load script file DefaultScript.py ({manifestResourceNames.Single()}) into a stream.";
-                this._logger.LogError(msg);
-                throw new InvalidOperationException(msg);
-            }
-
-            using (var streamReader = new StreamReader(pythonStream))
-            {
-                return streamReader.ReadToEnd();
-            }
         }
     }
 }

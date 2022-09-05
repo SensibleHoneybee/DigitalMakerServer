@@ -41,7 +41,7 @@ namespace DigitalMakerServer
                 InstanceState = InstanceState.NotRunning
             };
 
-            logger.LogLine($"Created instance bits. ID: {instance.Id}. Name: {instance.InstanceName}");
+            logger.LogLine($"Created instance bits. ID: {instance.InstanceId}. Name: {instance.InstanceName}");
 
             // And create wrapper to store it in DynamoDB
             var instanceStorage = new InstanceStorage
