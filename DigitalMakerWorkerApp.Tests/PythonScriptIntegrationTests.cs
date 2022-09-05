@@ -36,14 +36,14 @@ namespace DigitalMakerWorkerApp.Tests
                     {
                         Name = "fish_and_chips",
                         VariableType = VariableType.String,
-                        Value = "Mushy peas"
+                        Value = "Mushy peas, fold"
                     }
                 }
             };
 
             var result = await pythonScriptRunner.RunPythonProcessAsync(userSuppliedPythonCode, pythonData, new CancellationToken());
 
-
+            File.WriteAllText("C:\\temp\\MyFile.txt", result);
         }
     }
 }

@@ -44,7 +44,9 @@ namespace DigitalMakerWorkerApp.PythonInterface
 
             var actualPythonScript = string.Format(defaultPythonScript, variableDefinitions.ToString(), userSuppliedPythonCode);
 
-            return this._pythonScriptGateway.RunPythonProcessAsync(actualPythonScript, stoppingToken);
+            var pythonResult = this._pythonScriptGateway.RunPythonProcessAsync(actualPythonScript, stoppingToken);
+
+            return pythonResult;
         }
     }
 }

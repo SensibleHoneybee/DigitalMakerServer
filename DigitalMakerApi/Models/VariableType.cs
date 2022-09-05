@@ -10,8 +10,6 @@
 
         public const string List = "List";
 
-        public const string Dictionary = "Dictionary";
-
         public const string Boolean = "Boolean";
     }
 }
