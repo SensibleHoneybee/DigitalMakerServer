@@ -42,7 +42,9 @@ namespace DigitalMakerWorkerApp.PythonInterface
                 variableDefinitions.AppendLine(definition);
             }
 
-            var actualPythonScript = string.Format(defaultPythonScript, variableDefinitions.ToString(), userSuppliedPythonCode);
+            var actualPythonScript = defaultPythonScript
+                .Replace("{{{VARIABLE_DEFINITIONS}}}", variableDefinitions.ToString())
+                .Replace("{{{USER_CODE}}}", userSuppliedPythonCode);
 
             var pythonResult = this._pythonScriptGateway.RunPythonProcessAsync(actualPythonScript, stoppingToken);
 

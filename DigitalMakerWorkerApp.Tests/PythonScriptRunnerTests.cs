@@ -12,7 +12,7 @@ namespace DigitalMakerWorkerApp.Tests
         [Fact]
         public async Task ThatSubstitutesPythonScriptAndVariablesAndCallsGateway()
         {
-            const string ScriptTemplate = "Foo\r\n{0}\r\n{1}\r\nBar";
+            const string ScriptTemplate = "Foo\r\n{{{VARIABLE_DEFINITIONS}}}\r\n{{{USER_CODE}}}\r\nBar";
             const string UserScript = "if 5 > 2:\r\n  print(\"Five is greater than two!\")";
             const string VariableDefinition = "fish = \"chips\"\r\nmushy_peas = 32.4";
 

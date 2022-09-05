@@ -72,7 +72,8 @@ namespace DigitalMakerWorkerApp.PythonInterface
             var valueAsDouble = value as double?;
             if (valueAsString != null && (forcedType == null || forcedType == VariableType.String))
             {
-                return $"\"{valueAsString}\"";
+                var escapedValueAsString = valueAsString.Replace("\\", "\\\\").Replace("\r\n", "\\n").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\"", "\\\"").Replace("\'", "\\\'");
+                return $"\"{escapedValueAsString}\"";
             }
             if (valueAsInteger.HasValue && (forcedType == null || forcedType == VariableType.Integer))
             {

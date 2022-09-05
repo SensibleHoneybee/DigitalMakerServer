@@ -36,7 +36,7 @@ namespace DigitalMakerWorkerApp.Tests
                     {
                         Name = "fish_and_chips",
                         VariableType = VariableType.String,
-                        Value = "Mushy peas, fold"
+                        Value = "Mushy\r\npeas, \"fo'ld\\bold\""
                     }
                 }
             };
