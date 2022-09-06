@@ -1,7 +1,7 @@
 outputs_invoked = []
 
-def my_function():
-  print("Hello from a function")
+def output(output_to, parameter):
+  outputs_invoked.append({"name" : json.dumps(str(output_to)), "parameter" : json.dumps(str(parameter))})
 
 import sys
 import json
