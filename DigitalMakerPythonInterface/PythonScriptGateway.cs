@@ -2,8 +2,9 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
-namespace DigitalMakerWorkerApp.PythonInterface
+namespace DigitalMakerPythonInterface
 {
     public interface IPythonScriptGateway
     {

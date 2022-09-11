@@ -1,6 +1,6 @@
 ﻿using DigitalMakerApi.Models;
 
-namespace DigitalMakerWorkerApp.PythonInterface
+namespace DigitalMakerPythonInterface
 {
     public class PythonInputData
     {

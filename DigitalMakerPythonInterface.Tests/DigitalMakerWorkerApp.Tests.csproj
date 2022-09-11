@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DigitalMakerPythonInterface\DigitalMakerPythonInterface.csproj" />
     <ProjectReference Include="..\DigitalMakerWorkerApp\DigitalMakerWorkerApp.csproj" />
   </ItemGroup>
 

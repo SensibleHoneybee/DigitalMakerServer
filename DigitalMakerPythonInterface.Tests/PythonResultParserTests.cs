@@ -1,5 +1,5 @@
 ﻿using DigitalMakerApi.Models;
-using DigitalMakerWorkerApp.PythonInterface;
+using DigitalMakerPythonInterface;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;

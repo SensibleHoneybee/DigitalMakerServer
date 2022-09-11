@@ -1,8 +1,7 @@
 ﻿using DigitalMakerApi.Models;
-using System.Collections;
-using System.Linq;
+using Microsoft.Extensions.Logging;
 
-namespace DigitalMakerWorkerApp.PythonInterface
+namespace DigitalMakerPythonInterface
 {
     public interface IPythonVariableDefinitionProvider
     {

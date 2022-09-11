@@ -1,11 +1,9 @@
 ﻿using DigitalMakerApi.Helpers;
 using DigitalMakerApi.Models;
 using Newtonsoft.Json;
-using System.Collections;
-using System.Linq;
-using System.Text;
+using Microsoft.Extensions.Logging;
 
-namespace DigitalMakerWorkerApp.PythonInterface
+namespace DigitalMakerPythonInterface
 {
     public interface IPythonResultParser
     {

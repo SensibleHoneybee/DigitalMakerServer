@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
+using Microsoft.Extensions.Logging;
 
-namespace DigitalMakerWorkerApp.PythonInterface
+namespace DigitalMakerPythonInterface
 {
     public interface IPythonScriptProvider
     {
