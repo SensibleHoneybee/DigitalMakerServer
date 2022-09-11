@@ -2,9 +2,9 @@
 
 namespace DigitalMakerApi
 {
-    public class RootResponse
+    public class ResponseWithClientId
     {
-        public RootResponse(IResponse response, string clientId)
+        public ResponseWithClientId(IResponse response, string clientId)
         {
             Response = response;
             ClientId = clientId;

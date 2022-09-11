@@ -1,6 +1,6 @@
 ﻿namespace DigitalMakerApi
 {
-    public class RootRequest
+    public class RequestWrapper
     {
         public string RequestType { get; set; } = string.Empty;
 

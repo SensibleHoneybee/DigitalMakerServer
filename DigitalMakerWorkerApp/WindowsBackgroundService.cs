@@ -31,8 +31,8 @@ public sealed class WindowsBackgroundService : BackgroundService
                 InstanceId = Guid.NewGuid().ToString(),
                 InstanceName = "Test Instance 1"
             };
-            var rootRequest = new RootRequest { RequestType = RequestType.CreateInstance, Content = JsonConvert.SerializeObject(createInstanceRequest) };
-            var webSocketRequest = new { message = "sendmessage", data = JsonConvert.SerializeObject(rootRequest) };
+            var requestWrapper = new RequestWrapper { RequestType = RequestType.CreateInstance, Content = JsonConvert.SerializeObject(createInstanceRequest) };
+            var webSocketRequest = new { message = "sendmessage", data = JsonConvert.SerializeObject(requestWrapper) };
             await this._webSocketService.SendAsync(JsonConvert.SerializeObject(webSocketRequest), stoppingToken);
         }
         catch (Exception ex)

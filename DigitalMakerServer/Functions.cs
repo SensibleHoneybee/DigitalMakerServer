@@ -27,6 +27,7 @@ public class Functions
     public const string ConnectionIdField = "connectionId";
     private const string CONNECTION_TABLE_NAME_ENV = "CONNECTION_TABLE_NAME";
     private const string INSTANCE_TABLE_NAME_ENV = "InstanceTable";
+    private const string SHOPPING_SESSION_TABLE_NAME_ENV = "ShoppingSessionTable";
 
     /// <summary>
     /// DynamoDB table used to store the open connection ids. More advanced use cases could store logged on user map to their connection id to implement direct message chatting.
@@ -50,7 +51,12 @@ public class Functions
     IDynamoDBContext InstanceTableDDBContext { get; }
 
     /// <summary>
-    /// Engine to perform the calculations and operations for the instance
+    /// DynamoDB context for the storage and retrieval of shopping session objects to the database
+    /// </summary>
+    IDynamoDBContext ShoppingSessionTableDDBContext { get; }
+
+    /// <summary>
+    /// Engine to perform the calculations and operations
     /// </summary>
     IDigitalMakerEngine DigitalMakerEngine { get; }
 
@@ -77,6 +83,8 @@ public class Functions
             });
         });
 
+        var config = new DynamoDBContextConfig { Conversion = DynamoDBEntryConversion.V2 };
+
         // Now check to see if an instances table name was passed in through environment variables and if so 
         // add the table mapping.
         var instanceTableName = System.Environment.GetEnvironmentVariable(INSTANCE_TABLE_NAME_ENV);
@@ -84,11 +92,19 @@ public class Functions
         {
             AWSConfigsDynamoDB.Context.TypeMappings[typeof(InstanceStorage)] = new Amazon.Util.TypeMapping(typeof(InstanceStorage), instanceTableName);
         }
-        var config = new DynamoDBContextConfig { Conversion = DynamoDBEntryConversion.V2 };
         this.InstanceTableDDBContext = new DynamoDBContext(this.DDBClient, config);
 
+        // Now check to see if an shopping sessions table name was passed in through environment variables and if so 
+        // add the table mapping.
+        var shoppingSessionTableName = System.Environment.GetEnvironmentVariable(SHOPPING_SESSION_TABLE_NAME_ENV);
+        if (!string.IsNullOrEmpty(shoppingSessionTableName))
+        {
+            AWSConfigsDynamoDB.Context.TypeMappings[typeof(ShoppingSessionStorage)] = new Amazon.Util.TypeMapping(typeof(ShoppingSessionStorage), shoppingSessionTableName);
+        }
+        this.ShoppingSessionTableDDBContext = new DynamoDBContext(this.DDBClient, config);
+
         // New up a digital maker engine for use in the lifetime of this running
-        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext);
+        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext, this.ShoppingSessionTableDDBContext);
     }
 
     /// <summary>
@@ -100,13 +116,15 @@ public class Functions
     public Functions(IAmazonDynamoDB ddbClient,
         Func<string, IAmazonApiGatewayManagementApi> apiGatewayManagementApiClientFactory,
         IDynamoDBContext instanceTableDDBContext,
+        IDynamoDBContext shoppingSessionTableDDBContext,
         string connectionMappingTable)
     {
         this.DDBClient = ddbClient;
         this.ApiGatewayManagementApiClientFactory = apiGatewayManagementApiClientFactory;
         this.InstanceTableDDBContext = instanceTableDDBContext;
+        this.ShoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
         this.ConnectionMappingTable = connectionMappingTable;
-        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext);
+        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext, this.ShoppingSessionTableDDBContext);
     }
 
     public async Task<APIGatewayProxyResponse> OnConnectHandler(APIGatewayProxyRequest request, ILambdaContext context)
@@ -184,20 +202,20 @@ public class Functions
                 }
                 context.Logger.LogLine($"JSON Data: {data}");
 
-                var rootRequest = JsonConvert.DeserializeObject<RootRequest>(data);
-                if (rootRequest == null || string.IsNullOrEmpty(rootRequest.RequestType) || string.IsNullOrEmpty(rootRequest.Content))
+                var requestWrapper = JsonConvert.DeserializeObject<RequestWrapper>(data);
+                if (requestWrapper == null || string.IsNullOrEmpty(requestWrapper.RequestType) || string.IsNullOrEmpty(requestWrapper.Content))
                 {
                     context.Logger.LogLine("JSON data element did not contain a valid request, with a type and content");
                     return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                 }
 
-                context.Logger.LogLine($"Send Message Request. Type: {rootRequest.RequestType}. Content: {rootRequest.Content}");
+                context.Logger.LogLine($"Send Message Request. Type: {requestWrapper.RequestType}. Content: {requestWrapper.Content}");
 
-                List<RootResponse> responsesWithClientIds;
-                switch (rootRequest.RequestType)
+                List<ResponseWithClientId> responsesWithClientIds;
+                switch (requestWrapper.RequestType)
                 {
                     case RequestType.CreateInstance:
-                        var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(rootRequest.Content);
+                        var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(requestWrapper.Content);
                         if (createInstanceRequest == null)
                         {
                             context.Logger.LogLine("Root request content was not a valid CreateInstanceRequest");
@@ -205,8 +223,17 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
                         break;
+                    case RequestType.InputReceived:
+                        var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
+                        if (inputReceivedRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid InputReceivedRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.HandleInputReceivedAsync(inputReceivedRequest, connectionId, context.Logger);
+                        break;
                     default:
-                        throw new Exception($"Unknown message request type: {rootRequest.RequestType}");
+                        throw new Exception($"Unknown message request type: {requestWrapper.RequestType}");
                 }
 
                 context.Logger.LogLine($"Game responses: {responsesWithClientIds.Count}");

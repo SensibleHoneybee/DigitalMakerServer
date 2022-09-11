@@ -11,7 +11,12 @@
       "MaxLength": "50",
       "AllowedPattern": "^[A-Za-z_]+$"
     },
-    "ShouldCreateTable" : {
+    "ShouldCreateInstanceTable" : {
+      "Type" : "String",        
+      "AllowedValues" : ["true", "false"],
+      "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
+    },
+    "ShouldCreateShoppingSessionTable" : {
       "Type" : "String",        
       "AllowedValues" : ["true", "false"],
       "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
@@ -20,11 +25,18 @@
         "Type" : "String",
         "Description" : "Name of DynamoDB table used to store the token. If left blank a new table will be created.",
         "MinLength" : "0"
+    },
+    "ShoppingSessionTableName" : {
+        "Type" : "String",
+        "Description" : "Name of DynamoDB table used to store the token. If left blank a new table will be created.",
+        "MinLength" : "0"
     }
   },
   "Conditions" : {
-    "CreateInstanceTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateTable"}, "true"]},
-	  "TableNameGenerated" : {"Fn::Equals" : [{"Ref" : "InstanceTableName"}, ""]}
+    "CreateInstanceTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateInstanceTable"}, "true"]},
+    "InstanceTableNameGenerated" : {"Fn::Equals" : [{"Ref" : "InstanceTableName"}, ""]},
+    "CreateShoppingSessionTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateShoppingSessionTable"}, "true"]},
+    "ShoppingSessionTableNameGenerated" : {"Fn::Equals" : [{"Ref" : "ShoppingSessionTableName"}, ""]}
   },
   "Resources": {
     "ConnectionMappingTable": {
@@ -127,6 +139,13 @@
             }
           },
           {
+            "DynamoDBCrudPolicy": {
+              "TableName": {
+                "Fn::If" : ["CreateShoppingSessionTable", {"Ref":"ShoppingSessionTable"}, { "Ref" : "ShoppingSessionTableName" } ]
+              }
+            }
+          },
+          {
             "Statement": {
               "Effect": "Allow",
               "Action": "execute-api:ManageConnections",
@@ -137,7 +156,8 @@
         "Environment": {
           "Variables": {
             "CONNECTION_TABLE_NAME": { "Ref": "ConnectionMappingTableName" },
-            "InstanceTable" : { "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ] }
+            "InstanceTable" : { "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ] },
+            "ShoppingSessionTable" : { "Fn::If" : ["CreateShoppingSessionTable", {"Ref":"ShoppingSessionTable"}, { "Ref" : "ShoppingSessionTableName" } ] }
           }
         }
       }
@@ -362,7 +382,21 @@
         "Type": "AWS::DynamoDB::Table",
         "Condition" : "CreateInstanceTable",
         "Properties" : {
-          "TableName" : { "Fn::If" : ["TableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "InstanceTableName" } ] },
+          "TableName" : { "Fn::If" : ["InstanceTableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "InstanceTableName" } ] },
+          "AttributeDefinitions" : [
+            {"AttributeName" : "Id", "AttributeType" : "S"}
+          ],
+          "KeySchema"            : [
+            {"AttributeName" : "Id", "KeyType" : "HASH"}
+          ],
+        "BillingMode": "PAY_PER_REQUEST"
+      }
+    },
+    "ShoppingSessionTable" : {
+        "Type": "AWS::DynamoDB::Table",
+        "Condition" : "CreateShoppingSessionTable",
+        "Properties" : {
+          "TableName" : { "Fn::If" : ["ShoppingSessionTableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "ShoppingSessionTableName" } ] },
           "AttributeDefinitions" : [
             {"AttributeName" : "Id", "AttributeType" : "S"}
           ],
