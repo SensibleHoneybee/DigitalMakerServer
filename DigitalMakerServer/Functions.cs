@@ -224,14 +224,15 @@ public class Functions
                         responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
                         break;
                     case RequestType.InputReceived:
-                        var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
-                        if (inputReceivedRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid InputReceivedRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.HandleInputReceivedAsync(inputReceivedRequest, connectionId, context.Logger);
-                        break;
+                        throw new NotImplementedException();
+                        ////var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
+                        ////if (inputReceivedRequest == null)
+                        ////{
+                        ////    context.Logger.LogLine("Root request content was not a valid InputReceivedRequest");
+                        ////    return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        ////}
+                        ////responsesWithClientIds = await this.DigitalMakerEngine.HandleInputReceivedAsync(inputReceivedRequest, connectionId, context.Logger);
+                        ////break;
                     default:
                         throw new Exception($"Unknown message request type: {requestWrapper.RequestType}");
                 }
