@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerApi", "DigitalM
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerWorkerApp", "DigitalMakerWorkerApp\DigitalMakerWorkerApp.csproj", "{6760EFFF-B42D-41BF-A31A-BC0E6830FCB6}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerWorkerApp.Tests", "DigitalMakerWorkerApp.Tests\DigitalMakerWorkerApp.Tests.csproj", "{C6AD3357-574B-4E54-8F53-19BABB108E73}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DigitalMakerPythonInterface.Tests", "DigitalMakerPythonInterface.Tests\DigitalMakerPythonInterface.Tests.csproj", "{C6AD3357-574B-4E54-8F53-19BABB108E73}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DigitalMakerPythonInterface", "DigitalMakerPythonInterface\DigitalMakerPythonInterface.csproj", "{1557227F-1134-4EF1-A85F-1EDF54D064BB}"
 EndProject
