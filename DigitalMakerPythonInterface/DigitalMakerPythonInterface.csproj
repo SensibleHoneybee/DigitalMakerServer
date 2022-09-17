@@ -8,13 +8,16 @@
 
   <ItemGroup>
     <None Remove="Scripts\DefaultScript.py" />
+    <None Remove="Scripts\DefaultScriptIron.py" />
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Scripts\DefaultScriptIron.py" />
     <EmbeddedResource Include="Scripts\DefaultScript.py" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="IronPython.StdLib" Version="3.4.0-beta1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.1" />
   </ItemGroup>
 
