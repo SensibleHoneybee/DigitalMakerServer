@@ -4,6 +4,8 @@
     {
         public const string InstanceCreated = "InstanceCreated";
 
+        public const string ShoppingSessionCreated = "ShoppingSessionCreated";
+
         public const string FullGame = "FullGame";
 
         public const string PlayerJoinedGame = "PlayerJoinedGame";

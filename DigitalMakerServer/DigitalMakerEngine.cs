@@ -64,6 +64,43 @@ namespace DigitalMakerServer
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
+        public async Task<List<ResponseWithClientId>> StartShoppingAsync(StartShoppingRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.ShoppingSessionId))
+            {
+                throw new Exception("StartShoppingRequest.ShoppingSessionId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.InstanceId))
+            {
+                throw new Exception("StartShoppingRequest.InstanceId must be supplied");
+            }
+
+            var shoppingSession = new ShoppingSession
+            {
+                ShoppingSessionId = request.ShoppingSessionId,
+                InstanceId = request.InstanceId
+            };
+
+            logger.LogLine($"Created shopping session. ID: {shoppingSession.ShoppingSessionId}. Instance: {shoppingSession.InstanceId}");
+
+            // And create wrapper to store it in DynamoDB
+            var shoppingSessionStorage = new ShoppingSessionStorage
+            {
+                Id = request.InstanceId,
+                CreatedTimestamp = DateTime.UtcNow,
+                Content = JsonConvert.SerializeObject(shoppingSession)
+            };
+
+            logger.LogLine($"Saving shopping session with id {shoppingSession.ShoppingSessionId}");
+            await this.ShoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
+
+            var response = new ShoppingSessionCreatedResponse { ShoppingSessionId = request.ShoppingSessionId };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
         ////    public async Task<List<ResponseWithClientId>> HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, ILambdaLogger logger)
         ////    {
         ////        if (string.IsNullOrEmpty(request.ShoppingSessionId))

@@ -223,6 +223,15 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
                         break;
+                    case RequestType.StartShopping:
+                        var startShoppingRequest = JsonConvert.DeserializeObject<StartShoppingRequest>(requestWrapper.Content);
+                        if (startShoppingRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid StartShoppingRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.StartShoppingAsync(startShoppingRequest, connectionId, context.Logger);
+                        break;
                     case RequestType.InputReceived:
                         throw new NotImplementedException();
                         ////var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
