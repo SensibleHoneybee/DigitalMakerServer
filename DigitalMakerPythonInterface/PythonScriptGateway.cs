@@ -8,7 +8,7 @@ namespace DigitalMakerPythonInterface
 {
     public interface IPythonScriptGateway
     {
-        Task<string> RunPythonProcessAsync(string pythonCode, CancellationToken stoppingToken);
+        Task<string> RunPythonProcessAsync(string pythonCode);
     }
 
     public class PythonScriptGateway : IPythonScriptGateway
@@ -22,7 +22,7 @@ namespace DigitalMakerPythonInterface
             this._logger = logger;  
         }
 
-        public async Task<string> RunPythonProcessAsync(string pythonCode, CancellationToken stoppingToken)
+        public async Task<string> RunPythonProcessAsync(string pythonCode)
         {
             var tmpFile = Path.GetTempFileName();
 
@@ -72,7 +72,7 @@ namespace DigitalMakerPythonInterface
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
 
-                        await process.WaitForExitAsync(stoppingToken);
+                        await process.WaitForExitAsync();
 
                         if (await Task.Run(() => outputWaitHandle.WaitOne(TimeoutInMilliseconds)) &&
                             await Task.Run(() => errorWaitHandle.WaitOne(TimeoutInMilliseconds)))

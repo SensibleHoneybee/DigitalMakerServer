@@ -18,7 +18,7 @@ namespace DigitalMakerPythonInterface
 
         public string GetPythonScript()
         {
-            var assembly = typeof(PythonScriptRunner).GetTypeInfo().Assembly;
+            var assembly = typeof(IronPythonScriptRunner).GetTypeInfo().Assembly;
             var manifestResourceNames = assembly.GetManifestResourceNames().Where(x => x.Contains("DefaultScript.py")).ToList();
             if (manifestResourceNames.Count != 1)
             {

@@ -8,10 +8,6 @@ namespace DigitalMakerApi.Models
 
         public string InstanceName { get; set; } = string.Empty;
 
-        /// <summary>
-        /// public string InstanceCode { get; set; }
-        /// </summary>
-
         public string InstanceState { get; set; } = string.Empty;
 
         public List<Variable> Variables { get; set; } = new List<Variable>();

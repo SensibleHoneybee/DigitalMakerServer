@@ -2,9 +2,9 @@
 {
     public class ShoppingSession
     {
-        public string ShoppingSessionId { get; set; }
+        public string ShoppingSessionId { get; set; } = string.Empty;
 
-        public string InstanceId { get; set; }
+        public string InstanceId { get; set; } = string.Empty;
 
         public List<Variable> Variables { get; set; } = new List<Variable>();
     }

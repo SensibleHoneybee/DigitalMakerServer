@@ -4,13 +4,13 @@
     {
         public const string InstanceCreated = "InstanceCreated";
 
+        public const string InstanceAdminReconnected = "InstanceAdminReconnected";
+
         public const string ShoppingSessionCreated = "ShoppingSessionCreated";
 
-        public const string FullGame = "FullGame";
+        public const string ShoppingSessionReconnected = "ShoppingSessionReconnected";
 
-        public const string PlayerJoinedGame = "PlayerJoinedGame";
-
-        public const string MessageToPlayer = "MessageToPlayer";
+        public const string NoInputHandler = "NoInputHandler";
 
         public const string Error = "Error";
     }

@@ -1,5 +1,7 @@
 ﻿using System.Text;
 using System.Text.RegularExpressions;
+using DigitalMakerApi.Models;
+using IronPython.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace DigitalMakerPythonInterface
@@ -8,58 +10,54 @@ namespace DigitalMakerPythonInterface
     {
         private readonly IPythonScriptProvider _pythonScriptProvider;
 
-        private readonly IPythonScriptGateway _pythonScriptGateway;
-
         private readonly IPythonVariableDefinitionProvider _pythonVariableDefinitionProvider;
 
-        private readonly IPythonResultParser _pythonResultParser;
-
-        private readonly ILogger<PythonScriptRunner> _logger;
+        private readonly ILogger<IronPythonScriptRunner> _logger;
 
         public IronPythonScriptRunner(
             IPythonScriptProvider pythonScriptProvider,
-            IPythonScriptGateway pythonScriptGateway,
             IPythonVariableDefinitionProvider pythonVariableDefinitionProvider,
-            IPythonResultParser pythonResultParser,
-            ILogger<PythonScriptRunner> logger)
+            ILogger<IronPythonScriptRunner> logger)
         {
             this._pythonScriptProvider = pythonScriptProvider;
-            this._pythonScriptGateway = pythonScriptGateway;
             this._pythonVariableDefinitionProvider = pythonVariableDefinitionProvider;
-            this._pythonResultParser = pythonResultParser;
             this._logger = logger;
         }
 
-        public async Task<string> RunPythonProcessAsync(string userSuppliedPythonCode, PythonInputData pythonInputData, CancellationToken stoppingToken)
+        public async Task<PythonOutputData> RunPythonProcessAsync(string userSuppliedPythonCode, PythonInputData pythonInputData)
         {
-            // Script has everything running inside a function, so indent everything by one indentation
-            userSuppliedPythonCode = InsertIndentations(userSuppliedPythonCode);
-
             var defaultPythonScript = this._pythonScriptProvider.GetPythonScript();
 
-            // Construct python initializers for the variables
-            var variableDefinitions = new StringBuilder();
+            var engine = Python.CreateEngine();
+            var scope = engine.CreateScope();
+
+            // Initialize the variables in python
             foreach (var variable in pythonInputData.Variables)
             {
-                var definition = this._pythonVariableDefinitionProvider.GetPythonVariableDefinition(variable);
-                variableDefinitions.AppendLine($"  {definition}");
+                scope.SetVariable(variable.Name, variable.Value);
             }
 
             var actualPythonScript = defaultPythonScript
-                .Replace("{{{VARIABLE_DEFINITIONS}}}", variableDefinitions.ToString())
                 .Replace("{{{USER_CODE}}}", userSuppliedPythonCode);
 
-            var pythonResult = await this._pythonScriptGateway.RunPythonProcessAsync(actualPythonScript, stoppingToken);
+            try
+            {
+                await Task.Run(() => engine.Execute(actualPythonScript, scope));
+            }
+            catch (Exception ex)
+            {
+                var msg = $"An error occurred during python script opertation:\r\n{ex.Message}";
+                _logger.LogError(msg);
+                throw new InvalidOperationException(msg);
+            }
 
-            var parsedResults = _pythonResultParser.Parse(pythonResult, pythonInputData.Variables);
+            // Update our variables with their new values
+            foreach (var variable in pythonInputData.Variables)
+            {
+                variable.Value = scope.GetVariable(variable.Name);
+            }
 
-            return pythonResult;
-        }
-
-        private static string InsertIndentations(string input)
-        {
-            var lineByLine = Regex.Split(input, "\r\n|\r|\n");
-            return string.Join("\r\n", lineByLine.Select(x => "  " + x));
+            return new PythonOutputData(pythonInputData.Variables, new List<OutputAction>());
         }
     }
 }
