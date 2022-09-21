@@ -12,6 +12,8 @@
 
         public const string NoInputHandler = "NoInputHandler";
 
+        public const string OutputAction = "OutputAction";
+
         public const string Error = "Error";
     }
 }

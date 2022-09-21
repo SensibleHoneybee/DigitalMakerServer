@@ -4,21 +4,24 @@ using DigitalMakerApi;
 using DigitalMakerApi.Models;
 using DigitalMakerApi.Requests;
 using DigitalMakerApi.Responses;
+using DigitalMakerPythonInterface;
 using Newtonsoft.Json;
 
 namespace DigitalMakerServer
 {
     public class DigitalMakerEngine : IDigitalMakerEngine
     {
-        public DigitalMakerEngine(IDynamoDBContext instanceTableDDBContext, IDynamoDBContext shoppingSessionTableDDBContext)
+        private readonly IDynamoDBContext instanceTableDDBContext;
+
+        private readonly IDynamoDBContext shoppingSessionTableDDBContext;
+
+        public DigitalMakerEngine(
+            IDynamoDBContext instanceTableDDBContext,
+            IDynamoDBContext shoppingSessionTableDDBContext)
         {
-            this.InstanceTableDDBContext = instanceTableDDBContext;
-            this.ShoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
+            this.instanceTableDDBContext = instanceTableDDBContext;
+            this.shoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
         }
-
-        IDynamoDBContext InstanceTableDDBContext { get; }
-
-        IDynamoDBContext ShoppingSessionTableDDBContext { get; }
 
         public async Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
         {
@@ -40,7 +43,6 @@ namespace DigitalMakerServer
             {
                 InstanceId = request.InstanceId,
                 InstanceName = request.InstanceName,
-                ////InstanceCode = instanceCode,
                 InstanceState = InstanceState.NotRunning
             };
 
@@ -50,15 +52,37 @@ namespace DigitalMakerServer
             var instanceStorage = new InstanceStorage
             {
                 Id = request.InstanceId,
-                ////GameCode = instanceCode,
                 CreatedTimestamp = DateTime.UtcNow,
-                Content = JsonConvert.SerializeObject(instance)
+                Content = JsonConvert.SerializeObject(instance),
+                InstanceAdminConnectionId = connectionId
             };
 
             logger.LogLine($"Saving instance with id {instanceStorage.Id}");
-            await this.InstanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
             var response = new InstanceCreatedResponse { InstanceId = request.InstanceId };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> ReconnectInstanceAdminAsync(ReconnectInstanceAdminRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.InstanceId))
+            {
+                throw new Exception("ReconnectInstanceAdminRequest.InstanceId must be supplied");
+            }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+
+            // Set the new connection ID
+            instanceStorage.InstanceAdminConnectionId = connectionId;
+
+            // And save it back
+            logger.LogLine($"Saving isntance with id {instanceStorage.Id}.");
+            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+
+            var response = new InstanceAdminReconnectedResponse { InstanceId = request.InstanceId };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
@@ -75,6 +99,15 @@ namespace DigitalMakerServer
             {
                 throw new Exception("StartShoppingRequest.InstanceId must be supplied");
             }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+
+            if (instanceStorage == null || string.IsNullOrEmpty(instanceStorage.InstanceAdminConnectionId))
+            {
+                throw new Exception($"Null InstanceStorage or empty connection ID for {request.InstanceId}");
+            }
+
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
 
             var shoppingSession = new ShoppingSession
             {
@@ -93,134 +126,101 @@ namespace DigitalMakerServer
             };
 
             logger.LogLine($"Saving shopping session with id {shoppingSession.ShoppingSessionId}");
-            await this.ShoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
+            await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
 
             var response = new ShoppingSessionCreatedResponse { ShoppingSessionId = request.ShoppingSessionId };
+
+            // Response should be sent to the caller and also to the instance admin
+            return new[] {
+                new ResponseWithClientId(response, connectionId),
+                new ResponseWithClientId(response, instanceStorage.InstanceAdminConnectionId)
+            }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> ReconnectShoppingSessionAsync(ReconnectShoppingSessionRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.ShoppingSessionId))
+            {
+                throw new Exception("ReconnectShoppingSessionRequest.ShoppingSessionId must be supplied");
+            }
+
+            var shoppingSessionStorage = await this.instanceTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+
+            // Set the new connection ID
+            shoppingSessionStorage.ShoppingSessionConnectionId = connectionId;
+
+            // And save it back
+            logger.LogLine($"Saving shopping session with id {shoppingSessionStorage.Id}.");
+            await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
+
+            var response = new ShoppingSessionReconnectedResponse { InstanceId = request.ShoppingSessionId };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
-        ////    public async Task<List<ResponseWithClientId>> HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, ILambdaLogger logger)
-        ////    {
-        ////        if (string.IsNullOrEmpty(request.ShoppingSessionId))
-        ////        {
-        ////            throw new Exception("HandleInputReceived.GameCode must be supplied");
-        ////        }
+        public async Task<List<ResponseWithClientId>> HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.ShoppingSessionId))
+            {
+                throw new Exception("InputReceivedRequest.ShoppingSessionId must be supplied");
+            }
 
-        ////        if (string.IsNullOrEmpty(request.InputName))
-        ////        {
-        ////            throw new Exception("HandleInputReceived.InputName must be supplied");
-        ////        }
+            if (string.IsNullOrEmpty(request.InputName))
+            {
+                throw new Exception("InputReceivedRequest.InputName must be supplied");
+            }
 
-        ////        // Find the shopping session in question
-        ////        var shoppingSessionStorage = await this.ShoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+            // Find the shopping session in question
+            var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+            var shoppingSession = JsonConvert.DeserializeObject<ShoppingSession>(shoppingSessionStorage.Content);
+            if (shoppingSession == null)
+            {
+                throw new Exception($"Shopping session {request.ShoppingSessionId} has no valid content");
+            }
 
-        ////        var shoppingSession = JsonConvert.DeserializeObject<ShoppingSession>(shoppingSessionStorage.Content);
+            // Now retrieve its instance
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(shoppingSession.InstanceId);
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {shoppingSession.InstanceId} for shopping session {request.ShoppingSessionId} has no valid content");
+            }
 
-        ////        if (shoppingSession.GameState != GameState.Started)
-        ////        {
-        ////            throw new Exception($"The game in which you are trying to play a card is not in the started state. State: {game.GameState}.");
-        ////        }
+            // Now find the code block for the input received
+            var eventHandler = instance.InputEventHandlers.SingleOrDefault(x => string.Equals(x.NameOfEvent, request.InputName, StringComparison.OrdinalIgnoreCase));
 
-        ////        if (!string.Equals(request.Username, game.PlayerToMoveUsername, StringComparison.OrdinalIgnoreCase))
-        ////        {
-        ////            var playerToMove = game.Players.SingleOrDefault(x => string.Equals(x.Username, game.PlayerToMoveUsername, StringComparison.OrdinalIgnoreCase));
-        ////            var playerToMoveNameDisplay = playerToMove != null ? playerToMove.PlayerName : $"<unknown player {game.PlayerToMoveUsername}>";
-        ////            throw new Exception($"You may not play a card to the deck, because it is not your turn. It is {playerToMoveNameDisplay}'s turn.");
-        ////        }
+            if (eventHandler == null)
+            {
+                // No input handler is not an error, as the user may not have defined one. Send back a response.
+                var response = new NoInputHandlerResponse { ShoppingSessionId = request.ShoppingSessionId, InputName = request.InputName };
+                return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            }
 
-        ////        var player = game.Players.SingleOrDefault(x => string.Equals(x.Username, request.Username, StringComparison.OrdinalIgnoreCase));
-        ////        if (player == null)
-        ////        {
-        ////            throw new Exception($"The user {request.Username} was not found in the game. Please click \"Join Game\" if you wish to join as a new player.");
-        ////        }
+            var pythonScriptProviderLogger = new DigitalMakerServerLogger<PythonScriptProvider>(logger);
+            var pythonScriptRunnerLogger = new DigitalMakerServerLogger<IronPythonScriptRunner>(logger);
+            var pythonScriptProvider = new PythonScriptProvider(pythonScriptProviderLogger);
+            var pythonScriptRunner = new IronPythonScriptRunner(pythonScriptProvider, pythonScriptRunnerLogger);
 
-        ////        var hand = game.Hands.SingleOrDefault(x => string.Equals(x.PlayerUsername, request.Username, StringComparison.OrdinalIgnoreCase));
-        ////        if (hand == null)
-        ////        {
-        ////            throw new Exception($"The user {request.Username} does not have a hand in the game.");
-        ////        }
+            var pythonInputData = new PythonInputData
+            {
+                Variables = instance.Variables
+            };
 
-        ////        var cardIndex = hand.Cards.IndexOf(request.Card);
-        ////        if (cardIndex == -1)
-        ////        {
-        ////            throw new Exception($"The card {request.Card} was not in {request.Username}'s hand.");
-        ////        }
+            var pythonResults = await pythonScriptRunner.RunPythonProcessAsync(eventHandler.PythonCode, pythonInputData);
 
-        ////        // Check that the move is legal, and apply any extra logic dependent on which card is played,
-        ////        // including setting the next player as active, if appropriate.
-        ////        var extraMessage = CheckMoveAndSetMoveState(game, request.Card, player);
+            // Update the variables back again
+            shoppingSession.Variables = pythonResults.Variables;
 
-        ////        // Now perform the card operation itself.
-        ////        hand.Cards.RemoveAt(cardIndex);
+            // Update the variables in the storage
+            shoppingSessionStorage.Content = JsonConvert.SerializeObject(shoppingSession);
 
-        ////        var deck = game.Decks.FirstOrDefault(x => x.CanDropFromHand);
-        ////        if (deck == null)
-        ////        {
-        ////            throw new Exception($"There are no decks which accept cards from your hand.");
-        ////        }
+            // And save it back to the DB
+            logger.LogLine($"Saving shopping session with id {shoppingSessionStorage.Id}.");
+            await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
 
-        ////        deck.Cards.Insert(0, request.Card);
-
-        ////        // Update the connection data in case it's changed
-        ////        player.ConnectionId = connectionId;
-
-        ////        // Add a message for everyone that the game started
-        ////        var msg = $"{player.PlayerName} played the {request.Card.CardDescription()}.";
-        ////        if (!string.IsNullOrEmpty(extraMessage))
-        ////        {
-        ////            msg += $" {extraMessage}";
-        ////        }
-        ////        game.Messages.Add(new Message
-        ////        {
-        ////            Content = msg,
-        ////            ToPlayerUsernames = game.Players.Select(x => x.Username).ToList()
-        ////        });
-
-        ////        game.Moves.Add(new Move
-        ////        {
-        ////            PlayerUsername = request.Username,
-        ////            Card = request.Card,
-        ////            DeckId = deck.Id,
-        ////            MoveDirection = MoveDirection.HandToDeck
-        ////        });
-
-        ////        // Update the game in the DB
-        ////        gameStorage.Content = JsonConvert.SerializeObject(game);
-
-        ////        // And save it back
-        ////        logger.LogLine($"Saving game with id {gameStorage.Id}.");
-        ////        await this.GameTableDDBContext.SaveAsync<GameStorage>(gameStorage);
-
-        ////        // Send a full game info to all players, as most of the info has changed
-        ////        var results = new List<ResponseWithClientId>();
-        ////        foreach (var particularPlayer in game.Players)
-        ////        {
-        ////            var handsByPlayerId = game.Hands.ToDictionary(x => x.PlayerUsername, StringComparer.OrdinalIgnoreCase);
-        ////            var thePlayersHand = handsByPlayerId.ContainsKey(particularPlayer.Username) ? handsByPlayerId[particularPlayer.Username] : default(Hand);
-        ////            var fullGameResponse = new FullGameResponse
-        ////            {
-        ////                GameId = game.Id,
-        ////                GameCode = game.GameCode,
-        ////                GameName = game.GameName,
-        ////                GameState = game.GameState,
-        ////                PlayerInfo = game.Players.SingleOrDefault(x => string.Equals(x.Username, particularPlayer.Username, StringComparison.OrdinalIgnoreCase)).ToPlayerInfo(handsByPlayerId),
-        ////                AllPlayers = game.Players.Select(x => x.ToPlayerInfo(handsByPlayerId)).ToList(),
-        ////                Hand = thePlayersHand?.Cards ?? new List<string>(),
-        ////                Decks = game.Decks.GetVisibleDecks(),
-        ////                MoveCanBeUndone = game.Moves.Any(),
-        ////                Messages = game.Messages.Where(x => x.ToPlayerUsernames.Contains(particularPlayer.Username, StringComparer.OrdinalIgnoreCase)).Select(x => x.Content).ToList(),
-        ////                PlayerToMoveUsername = game.PlayerToMoveUsername,
-        ////                PlayDirection = game.PlayDirection,
-        ////                MoveState = game.MoveState,
-        ////                WinnerName = game.WinnerName
-        ////            };
-
-        ////            results.Add(new ResponseWithClientId(fullGameResponse, particularPlayer.ConnectionId));
-        ////        }
-
-        ////        return results;
-        ////    }
+            // Now convert the output requests into messages to send to output devices
+            throw new NotImplementedException();
+        }
     }
 }

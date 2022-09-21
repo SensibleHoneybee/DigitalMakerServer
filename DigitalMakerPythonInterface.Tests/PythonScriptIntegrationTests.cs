@@ -13,14 +13,11 @@ namespace DigitalMakerWorkerApp.Tests
         {
             var mockLogger0 = new Mock<ILogger<PythonScriptProvider>>();
             var mockLogger2 = new Mock<ILogger<IronPythonScriptRunner>>();
-            var mockLogger3 = new Mock<ILogger<PythonVariableDefinitionProvider>>();
 
             var pythonScriptProvider = new IronPythonScriptProvider(mockLogger0.Object);
-            var pythonVariableDefinitionProvider = new PythonVariableDefinitionProvider(mockLogger3.Object);
 
             var pythonScriptRunner = new IronPythonScriptRunner(
                 pythonScriptProvider,
-                pythonVariableDefinitionProvider,
                 mockLogger2.Object);
 
             var userSuppliedPythonCode =

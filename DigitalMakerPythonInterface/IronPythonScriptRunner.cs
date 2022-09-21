@@ -10,17 +10,13 @@ namespace DigitalMakerPythonInterface
     {
         private readonly IPythonScriptProvider _pythonScriptProvider;
 
-        private readonly IPythonVariableDefinitionProvider _pythonVariableDefinitionProvider;
-
         private readonly ILogger<IronPythonScriptRunner> _logger;
 
         public IronPythonScriptRunner(
             IPythonScriptProvider pythonScriptProvider,
-            IPythonVariableDefinitionProvider pythonVariableDefinitionProvider,
             ILogger<IronPythonScriptRunner> logger)
         {
             this._pythonScriptProvider = pythonScriptProvider;
-            this._pythonVariableDefinitionProvider = pythonVariableDefinitionProvider;
             this._logger = logger;
         }
 

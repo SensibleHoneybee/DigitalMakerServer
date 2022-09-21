@@ -19,6 +19,8 @@ namespace DigitalMakerServer
 
         public string Content { get; set; }
 
+        public string ShoppingSessionConnectionId { get; set; } = string.Empty;
+
         [DynamoDBVersion]
         public long? Version { get; set; }
     }

@@ -15,6 +15,7 @@ using Newtonsoft.Json;
 using DigitalMakerApi;
 using DigitalMakerApi.Requests;
 using DigitalMakerApi.Responses;
+using DigitalMakerPythonInterface;
 
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -223,6 +224,15 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
                         break;
+                    case RequestType.ReconnectInstanceAdmin:
+                        var reconnectInstanceAdminRequest = JsonConvert.DeserializeObject<ReconnectInstanceAdminRequest>(requestWrapper.Content);
+                        if (reconnectInstanceAdminRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ReconnectInstanceAdminRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectInstanceAdminAsync(reconnectInstanceAdminRequest, connectionId, context.Logger);
+                        break;
                     case RequestType.StartShopping:
                         var startShoppingRequest = JsonConvert.DeserializeObject<StartShoppingRequest>(requestWrapper.Content);
                         if (startShoppingRequest == null)
@@ -231,6 +241,15 @@ public class Functions
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.StartShoppingAsync(startShoppingRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.ReconnectShoppingSession:
+                        var reconnectShoppingSessionRequest = JsonConvert.DeserializeObject<ReconnectShoppingSessionRequest>(requestWrapper.Content);
+                        if (reconnectShoppingSessionRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ReconnectShoppingSessionRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectShoppingSessionAsync(reconnectShoppingSessionRequest, connectionId, context.Logger);
                         break;
                     case RequestType.InputReceived:
                         throw new NotImplementedException();

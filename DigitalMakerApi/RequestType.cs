@@ -8,6 +8,8 @@
 
         public const string StartShopping = "StartShopping";
 
+        public const string ReconnectShoppingSession = "ReconnectShoppingSession";
+
         public const string InputReceived = "InputReceived";
     }
 }
