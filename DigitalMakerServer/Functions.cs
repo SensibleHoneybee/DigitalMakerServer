@@ -296,7 +296,10 @@ public class Functions
 
                     foreach (var response in responses)
                     {
-                        var encodedResponse = new { ResponseType = response.ResponseType, Content = JsonConvert.SerializeObject(response) };
+                        var encodedResponse = new ResponseWrapper
+                        {
+                            ResponseType = response.ResponseType, Content = JsonConvert.SerializeObject(response) 
+                        };
                         var responseJson = JsonConvert.SerializeObject(encodedResponse);
                         context.Logger.LogLine($"Sending JSON response {responseJson} to client {connectedClientConnectionId}.");
 

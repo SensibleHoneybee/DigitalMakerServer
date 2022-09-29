@@ -29,6 +29,7 @@ public class ShoppingIntegrationTests
         Mock<IAmazonApiGatewayManagementApi> _mockApiGatewayClient = new Mock<IAmazonApiGatewayManagementApi>();
         string tableName = "mocktable";
         string connectionId = "test-id";
+        string instanceAdminConnectionId = "instance-admin-test-id";
 
         var innerRequest = new StartShoppingRequest
         {
@@ -43,12 +44,10 @@ public class ShoppingIntegrationTests
             Content = JsonConvert.SerializeObject(innerRequest)
         };
 
-        var expectedResponseInner = new ShoppingSessionCreatedResponse
+        var instanceStorage = new InstanceStorage
         {
-            ShoppingSessionId = innerRequest.ShoppingSessionId
+            InstanceAdminConnectionId = instanceAdminConnectionId
         };
-
-        var expectedResponseOuter = new { ResponseType = expectedResponseInner.ResponseType, Content = JsonConvert.SerializeObject(expectedResponseInner) };
 
         var message = JsonConvert.SerializeObject(outerRequest);
 
@@ -64,7 +63,8 @@ public class ShoppingIntegrationTests
                 {
                     Items = new List<Dictionary<string, AttributeValue>>
                     {
-                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } }
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } },
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = instanceAdminConnectionId } } } }
                     }
                 });
             });
@@ -75,14 +75,31 @@ public class ShoppingIntegrationTests
             return _mockApiGatewayClient.Object;
         });
 
+        var messagesReceived = new List<ResponseDetails>();
         _mockApiGatewayClient.Setup(client => client.PostToConnectionAsync(It.IsAny<PostToConnectionRequest>(), It.IsAny<CancellationToken>()))
             .Callback<PostToConnectionRequest, CancellationToken>((request, token) =>
             {
                 var actualMessage = new StreamReader(request.Data).ReadToEnd();
-                Assert.Equal(JsonConvert.SerializeObject(expectedResponseOuter), actualMessage);
+                messagesReceived.Add(new ResponseDetails(actualMessage, request.ConnectionId));
             });
 
-        var functions = new Functions(_mockDDBClient.Object, apiGatewayFactory, new Mock<IDynamoDBContext>().Object, new Mock<IDynamoDBContext>().Object, tableName);
+        var instanceTableDynamoDBContext = new Mock<IDynamoDBContext>();
+        instanceTableDynamoDBContext
+            .Setup(x => x.LoadAsync<InstanceStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult(instanceStorage));
+
+        ShoppingSessionStorage? outputShoppingSessionStorage = null;
+        var shoppingSessionTableDynamoDBContext = new Mock<IDynamoDBContext>();
+        shoppingSessionTableDynamoDBContext
+            .Setup(x => x.SaveAsync<ShoppingSessionStorage>(It.IsAny<ShoppingSessionStorage>(), It.IsAny<CancellationToken>()))
+            .Callback<ShoppingSessionStorage, CancellationToken>((ss, ct) => outputShoppingSessionStorage = ss);
+
+        var functions = new Functions(
+            _mockDDBClient.Object,
+            apiGatewayFactory,
+            instanceTableDynamoDBContext.Object,
+            shoppingSessionTableDynamoDBContext.Object,
+            tableName);
 
         var lambdaContext = new TestLambdaContext();
 
@@ -96,7 +113,29 @@ public class ShoppingIntegrationTests
             },
             Body = "{\"message\":\"sendmessage\", \"data\":" + JsonConvert.SerializeObject(message) + "}"
         };
+
         var response = await functions.SendMessageHandler(request, lambdaContext);
+
         Assert.Equal(200, response.StatusCode);
+
+        // Check that the saved shopping session matches expected data
+        Assert.NotNull(outputShoppingSessionStorage);
+        Assert.Equal(connectionId, outputShoppingSessionStorage.ShoppingSessionConnectionId);
+
+        // And check that the appropriate messages were sent to both the caller and to the instance admin
+        Assert.Equal(2, messagesReceived.Count);
+        foreach (var testMessage in new[] { Tuple.Create(0, connectionId), Tuple.Create(1, instanceAdminConnectionId) })
+        {
+            var responseDetails = messagesReceived[testMessage.Item1];
+            Assert.Equal(testMessage.Item2, responseDetails.ConnectionId);
+            var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(responseDetails.Response);
+            Assert.NotNull(responseWrapper);
+            Assert.Equal(DigitalMakerResponseType.ShoppingSessionCreated, responseWrapper.ResponseType);
+            var messageResponse = JsonConvert.DeserializeObject<ShoppingSessionCreatedResponse>(responseWrapper.Content);
+            Assert.NotNull(messageResponse);
+            Assert.Equal(innerRequest.ShoppingSessionId, messageResponse.ShoppingSessionId);
+        }
     }
+    
+    private record ResponseDetails(string Response, string ConnectionId);
 }

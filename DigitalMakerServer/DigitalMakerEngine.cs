@@ -107,8 +107,6 @@ namespace DigitalMakerServer
                 throw new Exception($"Null InstanceStorage or empty connection ID for {request.InstanceId}");
             }
 
-            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
-
             var shoppingSession = new ShoppingSession
             {
                 ShoppingSessionId = request.ShoppingSessionId,
@@ -122,6 +120,7 @@ namespace DigitalMakerServer
             {
                 Id = request.InstanceId,
                 CreatedTimestamp = DateTime.UtcNow,
+                ShoppingSessionConnectionId = connectionId,
                 Content = JsonConvert.SerializeObject(shoppingSession)
             };
 
