@@ -7,5 +7,7 @@ namespace DigitalMakerApi.Requests
         public string InstanceId { get; set; } = string.Empty;
 
         public string InstanceName { get; set; } = string.Empty;
+
+        public string PlayerName { get; set; } = string.Empty;
     }
 }

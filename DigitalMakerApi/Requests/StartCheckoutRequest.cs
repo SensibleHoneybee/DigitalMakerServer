@@ -1,6 +1,6 @@
 ﻿namespace DigitalMakerApi.Requests
 {
-    public class StartShoppingRequest
+    public class StartCheckoutRequest
     {
         public string ShoppingSessionId { get; set; } = string.Empty;
 

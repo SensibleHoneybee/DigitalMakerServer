@@ -13,6 +13,7 @@ using DigitalMakerApi.Requests;
 using DigitalMakerApi;
 using Newtonsoft.Json;
 using DigitalMakerApi.Responses;
+using DigitalMakerApi.Models;
 
 namespace DigitalMakerServer.Tests;
 
@@ -30,23 +31,25 @@ public class ShoppingIntegrationTests
         string tableName = "mocktable";
         string connectionId = "test-id";
         string instanceAdminConnectionId = "instance-admin-test-id";
+        string instanceId = "Test instance ID";
 
-        var innerRequest = new StartShoppingRequest
+        var innerRequest = new StartCheckoutRequest
         {
             ShoppingSessionId = "Test session ID",
-            InstanceId = "Test instance ID",
+            InstanceId = instanceId,
             ShopperName = "Test shopper name"
         };
 
         var outerRequest = new RequestWrapper
         {
-            RequestType = RequestType.StartShopping,
+            RequestType = RequestType.StartCheckout,
             Content = JsonConvert.SerializeObject(innerRequest)
         };
 
         var instanceStorage = new InstanceStorage
         {
-            InstanceAdminConnectionId = instanceAdminConnectionId
+            InstanceAdminConnectionId = instanceAdminConnectionId,
+            Content = JsonConvert.SerializeObject(new Instance { InstanceId = instanceId })
         };
 
         var message = JsonConvert.SerializeObject(outerRequest);
@@ -120,7 +123,8 @@ public class ShoppingIntegrationTests
 
         // Check that the saved shopping session matches expected data
         Assert.NotNull(outputShoppingSessionStorage);
-        Assert.Equal(connectionId, outputShoppingSessionStorage.ShoppingSessionConnectionId);
+        Assert.Equal(connectionId, outputShoppingSessionStorage.CheckoutConnectionId);
+        Assert.Null(outputShoppingSessionStorage.CustomerScannerConnectionId);
 
         // And check that the appropriate messages were sent to both the caller and to the instance admin
         Assert.Equal(2, messagesReceived.Count);
@@ -130,10 +134,11 @@ public class ShoppingIntegrationTests
             Assert.Equal(testMessage.Item2, responseDetails.ConnectionId);
             var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(responseDetails.Response);
             Assert.NotNull(responseWrapper);
-            Assert.Equal(DigitalMakerResponseType.ShoppingSessionCreated, responseWrapper.ResponseType);
-            var messageResponse = JsonConvert.DeserializeObject<ShoppingSessionCreatedResponse>(responseWrapper.Content);
+            Assert.Equal(DigitalMakerResponseType.FullShoppingSession, responseWrapper.ResponseType);
+            var messageResponse = JsonConvert.DeserializeObject<FullShoppingSessionResponse>(responseWrapper.Content);
             Assert.NotNull(messageResponse);
-            Assert.Equal(innerRequest.ShoppingSessionId, messageResponse.ShoppingSessionId);
+            Assert.Equal(innerRequest.ShoppingSessionId, messageResponse.ShoppingSession.ShoppingSessionId);
+            Assert.Equal(instanceId, messageResponse.Instance.InstanceId);
         }
     }
     

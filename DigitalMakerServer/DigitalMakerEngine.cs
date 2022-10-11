@@ -35,6 +35,11 @@ namespace DigitalMakerServer
                 throw new Exception("CreateInstanceRequest.InstanceName must be supplied");
             }
 
+            if (string.IsNullOrEmpty(request.PlayerName))
+            {
+                throw new Exception("CreateInstanceRequest.PlayerName must be supplied");
+            }
+
             // Get a unique ID and code for this instance
             ////var secondsSinceY2K = (long)DateTime.UtcNow.Subtract(new DateTime(2000, 1, 1)).TotalSeconds;
             ////var InstanceCode = CreateInstanceCode(secondsSinceY2K);
@@ -43,6 +48,7 @@ namespace DigitalMakerServer
             {
                 InstanceId = request.InstanceId,
                 InstanceName = request.InstanceName,
+                PlayerName = request.PlayerName,
                 InstanceState = InstanceState.NotRunning
             };
 
@@ -60,7 +66,7 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instanceStorage.Id}");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new InstanceCreatedResponse { InstanceId = request.InstanceId };
+            var response = new FullInstanceResponse { Instance = instance };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
@@ -74,21 +80,70 @@ namespace DigitalMakerServer
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {request.InstanceId} has no valid content");
+            }
 
             // Set the new connection ID
             instanceStorage.InstanceAdminConnectionId = connectionId;
 
             // And save it back
-            logger.LogLine($"Saving isntance with id {instanceStorage.Id}.");
+            logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new InstanceAdminReconnectedResponse { InstanceId = request.InstanceId };
+            var response = new FullInstanceResponse { Instance = instance };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
-        public async Task<List<ResponseWithClientId>> StartShoppingAsync(StartShoppingRequest request, string connectionId, ILambdaLogger logger)
+        public async Task<List<ResponseWithClientId>> AddNewInputEventHandlerAsync(AddNewInputEventHandlerRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.InstanceId))
+            {
+                throw new Exception("AddNewInputEventHandlerRequest.InstanceId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.InputEventHandlerName))
+            {
+                throw new Exception("AddNewInputEventHandlerRequest.InputEventHandlerName must not be empty");
+            }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+            if (instanceStorage.InstanceAdminConnectionId != connectionId)
+            {
+                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect.");
+            }
+
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {request.InstanceId} has no valid content");
+            }
+
+            if (instance.InputEventHandlers.Any(x => string.Equals(x.NameOfEvent, request.InputEventHandlerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new Exception($"There is already an input event handler with the name {request.InputEventHandlerName}.");
+            }
+
+            instance.InputEventHandlers.Add(new InputEventHandler { NameOfEvent = request.InputEventHandlerName });
+
+            // Update the game in the DB
+            instanceStorage.Content = JsonConvert.SerializeObject(instance);
+
+            // And save it back
+            logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
+            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+
+            var response = new FullInstanceResponse { Instance = instance };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> StartCheckoutAsync(StartCheckoutRequest request, string connectionId, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.ShoppingSessionId))
             {
@@ -101,16 +156,23 @@ namespace DigitalMakerServer
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
-
             if (instanceStorage == null || string.IsNullOrEmpty(instanceStorage.InstanceAdminConnectionId))
             {
                 throw new Exception($"Null InstanceStorage or empty connection ID for {request.InstanceId}");
             }
 
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {request.InstanceId} has no valid content");
+            }
+
             var shoppingSession = new ShoppingSession
             {
                 ShoppingSessionId = request.ShoppingSessionId,
-                InstanceId = request.InstanceId
+                InstanceId = request.InstanceId,
+                ShopperName = request.ShopperName,
+                Variables = instance.Variables
             };
 
             logger.LogLine($"Created shopping session. ID: {shoppingSession.ShoppingSessionId}. Instance: {shoppingSession.InstanceId}");
@@ -120,14 +182,15 @@ namespace DigitalMakerServer
             {
                 Id = request.InstanceId,
                 CreatedTimestamp = DateTime.UtcNow,
-                ShoppingSessionConnectionId = connectionId,
+                CheckoutConnectionId = connectionId,
+                CustomerScannerConnectionId = null,
                 Content = JsonConvert.SerializeObject(shoppingSession)
             };
 
             logger.LogLine($"Saving shopping session with id {shoppingSession.ShoppingSessionId}");
             await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
 
-            var response = new ShoppingSessionCreatedResponse { ShoppingSessionId = request.ShoppingSessionId };
+            var response = new FullShoppingSessionResponse { Instance = instance, ShoppingSession = shoppingSession };
 
             // Response should be sent to the caller and also to the instance admin
             return new[] {
@@ -136,23 +199,69 @@ namespace DigitalMakerServer
             }.ToList();
         }
 
-        public async Task<List<ResponseWithClientId>> ReconnectShoppingSessionAsync(ReconnectShoppingSessionRequest request, string connectionId, ILambdaLogger logger)
+        public async Task<List<ResponseWithClientId>> ConnectCustomerScannerAsync(ConnectCustomerScannerRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.ShoppingSessionId))
+            {
+                throw new Exception("ConnectCustomerScannerRequest.ShoppingSessionId must be supplied");
+            }
+
+            var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+            var shoppingSession = JsonConvert.DeserializeObject<ShoppingSession>(shoppingSessionStorage.Content);
+            if (shoppingSession == null)
+            {
+                throw new Exception($"Shopping session {request.ShoppingSessionId} has no valid content");
+            }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(shoppingSession.InstanceId);
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {shoppingSession.InstanceId} of shopping session {request.ShoppingSessionId} has no valid content");
+            }
+
+            // Set the new customer scanner connection ID
+            shoppingSessionStorage.CustomerScannerConnectionId = connectionId;
+
+            // And save it back
+            logger.LogLine($"Saving shopping session with id {shoppingSessionStorage.Id}.");
+            await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
+
+            var response = new FullShoppingSessionResponse { Instance = instance, ShoppingSession = shoppingSession };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> ReconnectCheckoutAsync(ReconnectCheckoutRequest request, string connectionId, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.ShoppingSessionId))
             {
                 throw new Exception("ReconnectShoppingSessionRequest.ShoppingSessionId must be supplied");
             }
 
-            var shoppingSessionStorage = await this.instanceTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+            var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
+            var shoppingSession = JsonConvert.DeserializeObject<ShoppingSession>(shoppingSessionStorage.Content);
+            if (shoppingSession == null)
+            {
+                throw new Exception($"Shopping session {request.ShoppingSessionId} has no valid content");
+            }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(shoppingSession.InstanceId);
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {shoppingSession.InstanceId} of shopping session {request.ShoppingSessionId} has no valid content");
+            }
 
             // Set the new connection ID
-            shoppingSessionStorage.ShoppingSessionConnectionId = connectionId;
+            shoppingSessionStorage.CheckoutConnectionId = connectionId;
 
             // And save it back
             logger.LogLine($"Saving shopping session with id {shoppingSessionStorage.Id}.");
             await this.shoppingSessionTableDDBContext.SaveAsync<ShoppingSessionStorage>(shoppingSessionStorage);
 
-            var response = new ShoppingSessionReconnectedResponse { InstanceId = request.ShoppingSessionId };
+            var response = new FullShoppingSessionResponse { Instance = instance, ShoppingSession = shoppingSession };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();

@@ -6,9 +6,13 @@
 
         public const string ReconnectInstanceAdmin = "ReconnectInstanceAdmin";
 
-        public const string StartShopping = "StartShopping";
+        public const string AddNewInputEventHandler = "AddNewInputEventHandler";
 
-        public const string ReconnectShoppingSession = "ReconnectShoppingSession";
+        public const string StartCheckout = "StartCheckout";
+
+        public const string ReconnectCheckout = "ReconnectCheckout";
+
+        public const string ConnectCustomerScanner = "ConnectCustomerScanner";
 
         public const string InputReceived = "InputReceived";
     }

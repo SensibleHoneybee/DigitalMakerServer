@@ -233,23 +233,41 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.ReconnectInstanceAdminAsync(reconnectInstanceAdminRequest, connectionId, context.Logger);
                         break;
-                    case RequestType.StartShopping:
-                        var startShoppingRequest = JsonConvert.DeserializeObject<StartShoppingRequest>(requestWrapper.Content);
-                        if (startShoppingRequest == null)
+                    case RequestType.AddNewInputEventHandler:
+                        var addNewInputEventHandlerRequest = JsonConvert.DeserializeObject<AddNewInputEventHandlerRequest>(requestWrapper.Content);
+                        if (addNewInputEventHandlerRequest == null)
                         {
-                            context.Logger.LogLine("Root request content was not a valid StartShoppingRequest");
+                            context.Logger.LogLine("Root request content was not a valid AddNewInputEventHandlerRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.StartShoppingAsync(startShoppingRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await this.DigitalMakerEngine.AddNewInputEventHandlerAsync(addNewInputEventHandlerRequest, connectionId, context.Logger);
                         break;
-                    case RequestType.ReconnectShoppingSession:
-                        var reconnectShoppingSessionRequest = JsonConvert.DeserializeObject<ReconnectShoppingSessionRequest>(requestWrapper.Content);
-                        if (reconnectShoppingSessionRequest == null)
+                    case RequestType.StartCheckout:
+                        var startCheckoutRequest = JsonConvert.DeserializeObject<StartCheckoutRequest>(requestWrapper.Content);
+                        if (startCheckoutRequest == null)
                         {
-                            context.Logger.LogLine("Root request content was not a valid ReconnectShoppingSessionRequest");
+                            context.Logger.LogLine("Root request content was not a valid StartCheckoutRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectShoppingSessionAsync(reconnectShoppingSessionRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await this.DigitalMakerEngine.StartCheckoutAsync(startCheckoutRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.ReconnectCheckout:
+                        var reconnectCheckoutRequest = JsonConvert.DeserializeObject<ReconnectCheckoutRequest>(requestWrapper.Content);
+                        if (reconnectCheckoutRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ReconnectCheckoutRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectCheckoutAsync(reconnectCheckoutRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.ConnectCustomerScanner:
+                        var connectCustomerScannerRequest = JsonConvert.DeserializeObject<ConnectCustomerScannerRequest>(requestWrapper.Content);
+                        if (connectCustomerScannerRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ConnectCustomerScannerRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectCustomerScannerAsync(connectCustomerScannerRequest, connectionId, context.Logger);
                         break;
                     case RequestType.InputReceived:
                         throw new NotImplementedException();
@@ -287,7 +305,7 @@ public class Functions
                 {
                     var connectedClientConnectionId = item[ConnectionIdField].S;
 
-                    List<IResponse> responses;
+                    List<IResponse>? responses;
                     if (!responsesByClientId.TryGetValue(connectedClientConnectionId, out responses))
                     {
                         // This connection isn't amongst those to receive a message response.
