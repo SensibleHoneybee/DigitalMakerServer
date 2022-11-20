@@ -2,6 +2,14 @@
 {
     public static class RequestType
     {
+        public const string ConnectMeetingAdmin = "ConnectMeetingAdmin";
+
+        public const string CreateMeeting = "CreateMeeting";
+
+        public const string JoinMeetingAsAdmin = "JoinMeetingAsAdmin";
+
+        public const string JoinMeeting = "JoinMeeting";
+
         public const string CreateInstance = "CreateInstance";
 
         public const string ReconnectInstanceAdmin = "ReconnectInstanceAdmin";

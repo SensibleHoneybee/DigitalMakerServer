@@ -15,7 +15,6 @@ using Newtonsoft.Json;
 using DigitalMakerApi;
 using DigitalMakerApi.Requests;
 using DigitalMakerApi.Responses;
-using DigitalMakerPythonInterface;
 
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -27,6 +26,8 @@ public class Functions
 {
     public const string ConnectionIdField = "connectionId";
     private const string CONNECTION_TABLE_NAME_ENV = "CONNECTION_TABLE_NAME";
+    private const string MEETING_ADMIN_TABLE_NAME_ENV = "MeetingAdminTable";
+    private const string MEETING_TABLE_NAME_ENV = "MeetingTable";
     private const string INSTANCE_TABLE_NAME_ENV = "InstanceTable";
     private const string SHOPPING_SESSION_TABLE_NAME_ENV = "ShoppingSessionTable";
 
@@ -47,9 +48,21 @@ public class Functions
     Func<string, IAmazonApiGatewayManagementApi> ApiGatewayManagementApiClientFactory { get; }
 
     /// <summary>
+    /// DynamoDB context for the storage and retrieval of meeting admin objects to the database
+    /// </summary>
+    IDynamoDBContext MeetingAdminTableDDBContext { get; }
+
+    /// <summary>
+    /// DynamoDB context for the storage and retrieval of meeting objects to the database
+    /// </summary>
+    IDynamoDBContext MeetingTableDDBContext { get; }
+
+
+    /// <summary>
     /// DynamoDB context for the storage and retrieval of instance objects to the database
     /// </summary>
     IDynamoDBContext InstanceTableDDBContext { get; }
+
 
     /// <summary>
     /// DynamoDB context for the storage and retrieval of shopping session objects to the database
@@ -86,6 +99,24 @@ public class Functions
 
         var config = new DynamoDBContextConfig { Conversion = DynamoDBEntryConversion.V2 };
 
+        // Now check to see if an meeting admin table name was passed in through environment variables and if so 
+        // add the table mapping.
+        var meetingAdminTableName = System.Environment.GetEnvironmentVariable(MEETING_ADMIN_TABLE_NAME_ENV);
+        if (!string.IsNullOrEmpty(meetingAdminTableName))
+        {
+            AWSConfigsDynamoDB.Context.TypeMappings[typeof(MeetingAdminStorage)] = new Amazon.Util.TypeMapping(typeof(MeetingAdminStorage), meetingAdminTableName);
+        }
+        this.MeetingAdminTableDDBContext = new DynamoDBContext(this.DDBClient, config);
+
+        // Now check to see if an meetings table name was passed in through environment variables and if so 
+        // add the table mapping.
+        var meetingTableName = System.Environment.GetEnvironmentVariable(MEETING_TABLE_NAME_ENV);
+        if (!string.IsNullOrEmpty(meetingTableName))
+        {
+            AWSConfigsDynamoDB.Context.TypeMappings[typeof(MeetingStorage)] = new Amazon.Util.TypeMapping(typeof(MeetingStorage), meetingTableName);
+        }
+        this.MeetingTableDDBContext = new DynamoDBContext(this.DDBClient, config);
+
         // Now check to see if an instances table name was passed in through environment variables and if so 
         // add the table mapping.
         var instanceTableName = System.Environment.GetEnvironmentVariable(INSTANCE_TABLE_NAME_ENV);
@@ -104,8 +135,15 @@ public class Functions
         }
         this.ShoppingSessionTableDDBContext = new DynamoDBContext(this.DDBClient, config);
 
+        var secretHasher = new SecretHasher();
+
         // New up a digital maker engine for use in the lifetime of this running
-        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext, this.ShoppingSessionTableDDBContext);
+        this.DigitalMakerEngine = new DigitalMakerEngine(
+            this.MeetingAdminTableDDBContext,
+            this.MeetingTableDDBContext,
+            this.InstanceTableDDBContext,
+            this.ShoppingSessionTableDDBContext,
+            secretHasher);
     }
 
     /// <summary>
@@ -116,16 +154,26 @@ public class Functions
     /// <param name="connectionMappingTable"></param>
     public Functions(IAmazonDynamoDB ddbClient,
         Func<string, IAmazonApiGatewayManagementApi> apiGatewayManagementApiClientFactory,
+        IDynamoDBContext meetingAdminTableDDBContext,
+        IDynamoDBContext meetingTableDDBContext,
         IDynamoDBContext instanceTableDDBContext,
         IDynamoDBContext shoppingSessionTableDDBContext,
+        ISecretHasher secretHasher,
         string connectionMappingTable)
     {
         this.DDBClient = ddbClient;
         this.ApiGatewayManagementApiClientFactory = apiGatewayManagementApiClientFactory;
+        this.MeetingAdminTableDDBContext = meetingAdminTableDDBContext;
+        this.MeetingTableDDBContext = meetingTableDDBContext;
         this.InstanceTableDDBContext = instanceTableDDBContext;
         this.ShoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
         this.ConnectionMappingTable = connectionMappingTable;
-        this.DigitalMakerEngine = new DigitalMakerEngine(this.InstanceTableDDBContext, this.ShoppingSessionTableDDBContext);
+        this.DigitalMakerEngine = new DigitalMakerEngine(
+            this.MeetingAdminTableDDBContext, 
+            this.MeetingTableDDBContext, 
+            this.InstanceTableDDBContext, 
+            this.ShoppingSessionTableDDBContext,
+            secretHasher);
     }
 
     public async Task<APIGatewayProxyResponse> OnConnectHandler(APIGatewayProxyRequest request, ILambdaContext context)
@@ -215,6 +263,33 @@ public class Functions
                 List<ResponseWithClientId> responsesWithClientIds;
                 switch (requestWrapper.RequestType)
                 {
+                    case RequestType.ConnectMeetingAdmin:
+                        var connectMeetingAdminRequest = JsonConvert.DeserializeObject<ConnectMeetingAdminRequest>(requestWrapper.Content);
+                        if (connectMeetingAdminRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ConnectMeetingAdminRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectMeetingAdminAsync(connectMeetingAdminRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.CreateMeeting:
+                        var createMeetingRequest = JsonConvert.DeserializeObject<CreateMeetingRequest>(requestWrapper.Content);
+                        if (createMeetingRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid CreateMeetingRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.CreateMeetingAsync(createMeetingRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.JoinMeeting:
+                        var joinMeetingRequest = JsonConvert.DeserializeObject<JoinMeetingRequest>(requestWrapper.Content);
+                        if (joinMeetingRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid JoinMeetingRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.JoinMeetingAsync(joinMeetingRequest, connectionId, context.Logger);
+                        break;
                     case RequestType.CreateInstance:
                         var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(requestWrapper.Content);
                         if (createInstanceRequest == null)

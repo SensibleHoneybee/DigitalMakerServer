@@ -11,16 +11,157 @@ namespace DigitalMakerServer
 {
     public class DigitalMakerEngine : IDigitalMakerEngine
     {
+        private const string MeetingAdminSingletonId = "ea3c6398-2731-4ebf-8746-7024716bfba3";
+
+        private readonly IDynamoDBContext meetingAdminTableDDBContext;
+
+        private readonly IDynamoDBContext meetingTableDDBContext;
+
         private readonly IDynamoDBContext instanceTableDDBContext;
 
         private readonly IDynamoDBContext shoppingSessionTableDDBContext;
 
+        private readonly ISecretHasher secretHasher;
+
         public DigitalMakerEngine(
+            IDynamoDBContext meetingAdminTableDDBContext,
+            IDynamoDBContext meetingTableDDBContext,
             IDynamoDBContext instanceTableDDBContext,
-            IDynamoDBContext shoppingSessionTableDDBContext)
+            IDynamoDBContext shoppingSessionTableDDBContext,
+            ISecretHasher secretHasher)
         {
+            this.meetingAdminTableDDBContext = meetingAdminTableDDBContext;
+            this.meetingTableDDBContext = meetingTableDDBContext;
             this.instanceTableDDBContext = instanceTableDDBContext;
             this.shoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
+            this.secretHasher = secretHasher;
+        }
+
+        public async Task<List<ResponseWithClientId>> ConnectMeetingAdminAsync(ConnectMeetingAdminRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingAdminPassword))
+            {
+                throw new Exception("ConnectMeetingAdminRequest.MeetingAdminPassword must be supplied");
+            }
+
+            var meetingAdminStorage = await this.meetingAdminTableDDBContext.LoadAsync<MeetingAdminStorage>(MeetingAdminSingletonId);
+            if (!this.secretHasher.Verify(request.MeetingAdminPassword, meetingAdminStorage.MeetingAdminPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
+            // Set the new connection ID
+            meetingAdminStorage.MeetingAdminConnectionId = connectionId;
+
+            // And save it back
+            logger.LogLine($"Saving meeting admin with id {MeetingAdminSingletonId}.");
+            await this.meetingAdminTableDDBContext.SaveAsync<MeetingAdminStorage>(meetingAdminStorage);
+
+            var response = new ConnectedMeetingAdminResponse();
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> CreateMeetingAsync(CreateMeetingRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateMeetingRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingName))
+            {
+                throw new Exception("CreateMeetingRequest.MeetingName must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateMeetingRequest.MeetingPassword must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingAdminPassword))
+            {
+                throw new Exception("CreateMeetingRequest.MeetingAdminPassword must be supplied");
+            }
+
+            var meetingAdminStorage = await this.meetingAdminTableDDBContext.LoadAsync<MeetingAdminStorage>(MeetingAdminSingletonId);
+
+            if (!this.secretHasher.Verify(request.MeetingAdminPassword, meetingAdminStorage.MeetingAdminPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
+            var meetingStorage = new MeetingStorage
+            {
+                Id = request.MeetingId,
+                MeetingName = request.MeetingName,
+                MeetingPasswordHash = this.secretHasher.Hash(request.MeetingPassword),
+                MeetingAdminConnectionId = connectionId,
+                CreatedTimestamp = DateTime.UtcNow
+            };
+
+            logger.LogLine($"Created meeting bits. ID: {meetingStorage.Id}. Name: {meetingStorage.MeetingName}");
+
+            logger.LogLine($"Saving meeting with id {meetingStorage.Id}");
+            await this.meetingTableDDBContext.SaveAsync<MeetingStorage>(meetingStorage);
+
+            var response = new SuccessResponse { Message = $"Successfully created meeting {request.MeetingName}. Meeting ID: {request.MeetingId}" };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> JoinMeetingAsAdminAsync(JoinMeetingAsAdminRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("JoinMeetingAsAdminRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingAdminPassword))
+            {
+                throw new Exception("JoinMeetingAsAdminRequest.MeetingAdminPassword must be supplied");
+            }
+
+            var meetingAdminStorage = await this.meetingAdminTableDDBContext.LoadAsync<MeetingAdminStorage>(MeetingAdminSingletonId);
+
+            if (!this.secretHasher.Verify(request.MeetingAdminPassword, meetingAdminStorage.MeetingAdminPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+
+            var response = new FullMeetingResponse { MeetingId = meetingStorage.Id, MeetingName = meetingStorage.MeetingName };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> JoinMeetingAsync(JoinMeetingRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
+            var response = new FullMeetingResponse { MeetingId = meetingStorage.Id, MeetingName = meetingStorage.MeetingName };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
         public async Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
@@ -40,9 +181,21 @@ namespace DigitalMakerServer
                 throw new Exception("CreateInstanceRequest.PlayerName must be supplied");
             }
 
-            // Get a unique ID and code for this instance
-            ////var secondsSinceY2K = (long)DateTime.UtcNow.Subtract(new DateTime(2000, 1, 1)).TotalSeconds;
-            ////var InstanceCode = CreateInstanceCode(secondsSinceY2K);
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
 
             var instance = new Instance
             {
@@ -79,6 +232,22 @@ namespace DigitalMakerServer
                 throw new Exception("ReconnectInstanceAdminRequest.InstanceId must be supplied");
             }
 
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
             var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
             if (instance == null)
@@ -109,6 +278,22 @@ namespace DigitalMakerServer
             if (string.IsNullOrEmpty(request.InputEventHandlerName))
             {
                 throw new Exception("AddNewInputEventHandlerRequest.InputEventHandlerName must not be empty");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
@@ -153,6 +338,22 @@ namespace DigitalMakerServer
             if (string.IsNullOrEmpty(request.InstanceId))
             {
                 throw new Exception("StartShoppingRequest.InstanceId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
@@ -206,6 +407,22 @@ namespace DigitalMakerServer
                 throw new Exception("ConnectCustomerScannerRequest.ShoppingSessionId must be supplied");
             }
 
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
+            }
+
             var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
             var shoppingSession = JsonConvert.DeserializeObject<ShoppingSession>(shoppingSessionStorage.Content);
             if (shoppingSession == null)
@@ -238,6 +455,22 @@ namespace DigitalMakerServer
             if (string.IsNullOrEmpty(request.ShoppingSessionId))
             {
                 throw new Exception("ReconnectShoppingSessionRequest.ShoppingSessionId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
             }
 
             var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
@@ -277,6 +510,22 @@ namespace DigitalMakerServer
             if (string.IsNullOrEmpty(request.InputName))
             {
                 throw new Exception("InputReceivedRequest.InputName must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting Admin password incorrect");
             }
 
             // Find the shopping session in question

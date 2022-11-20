@@ -6,6 +6,12 @@ namespace DigitalMakerServer
 {
     public interface IDigitalMakerEngine
     {
+        Task<List<ResponseWithClientId>> ConnectMeetingAdminAsync(ConnectMeetingAdminRequest request, string connectionId, ILambdaLogger logger);
+
+        Task<List<ResponseWithClientId>> CreateMeetingAsync(CreateMeetingRequest request, string connectionId, ILambdaLogger logger);
+
+        Task<List<ResponseWithClientId>> JoinMeetingAsync(JoinMeetingRequest request, string connectionId, ILambdaLogger logger);
+
         Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger);
 
         Task<List<ResponseWithClientId>> ReconnectInstanceAdminAsync(ReconnectInstanceAdminRequest request, string connectionId, ILambdaLogger logger);

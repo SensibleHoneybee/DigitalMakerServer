@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace DigitalMakerApi.Requests
+﻿namespace DigitalMakerApi.Requests
 {
     public class CreateInstanceRequest
     {
@@ -9,5 +7,9 @@ namespace DigitalMakerApi.Requests
         public string InstanceName { get; set; } = string.Empty;
 
         public string PlayerName { get; set; } = string.Empty;
+
+        public string MeetingId { get; set; } = string.Empty;
+
+        public string MeetingPassword { get; set; } = string.Empty;
     }
 }

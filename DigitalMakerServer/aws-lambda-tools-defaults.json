@@ -11,7 +11,7 @@
     "configuration" : "Release",
     "s3-prefix"     : "DigitalMakerServer/",
     "template"      : "serverless.template",
-    "template-parameters" : "\"ConnectionMappingTableName\"=\"DigitalMakerConnections\";\"ShouldCreateInstanceTable\"=\"true\";\"ShouldCreateShoppingSessionTable\"=\"true\";\"InstanceTableName\"=\"\";\"ShoppingSessionTableName\"=\"\"",
+    "template-parameters" : "\"ConnectionMappingTableName\"=\"DigitalMakerConnections\";\"ShouldCreateMeetingAdminTable\"=\"true\";\"ShouldCreateMeetingTable\"=\"true\";\"ShouldCreateInstanceTable\"=\"true\";\"ShouldCreateShoppingSessionTable\"=\"true\";\"MeetingAdminTableName\"=\"\";\"MeetingTableName\"=\"\";\"InstanceTableName\"=\"\";\"ShoppingSessionTableName\"=\"\"",
     "s3-bucket"           : "digital-maker",
     "stack-name"          : "DigitalMaker"
 }

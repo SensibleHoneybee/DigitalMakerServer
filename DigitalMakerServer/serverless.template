@@ -11,6 +11,16 @@
       "MaxLength": "50",
       "AllowedPattern": "^[A-Za-z_]+$"
     },
+    "ShouldCreateMeetingAdminTable" : {
+      "Type" : "String",        
+      "AllowedValues" : ["true", "false"],
+      "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
+    },
+    "ShouldCreateMeetingTable" : {
+      "Type" : "String",        
+      "AllowedValues" : ["true", "false"],
+      "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
+    },
     "ShouldCreateInstanceTable" : {
       "Type" : "String",        
       "AllowedValues" : ["true", "false"],
@@ -20,6 +30,16 @@
       "Type" : "String",        
       "AllowedValues" : ["true", "false"],
       "Description" : "If true then the DynamoDB token table will be created with the CloudFormation stack."
+    },
+    "MeetingAdminTableName" : {
+        "Type" : "String",
+        "Description" : "Name of DynamoDB table used to store the token. If left blank a new table will be created.",
+        "MinLength" : "0"
+    },
+    "MeetingTableName" : {
+        "Type" : "String",
+        "Description" : "Name of DynamoDB table used to store the token. If left blank a new table will be created.",
+        "MinLength" : "0"
     },
     "InstanceTableName" : {
         "Type" : "String",
@@ -33,6 +53,10 @@
     }
   },
   "Conditions" : {
+    "CreateMeetingAdminTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateMeetingAdminTable"}, "true"]},
+    "MeetingAdminTableNameGenerated" : {"Fn::Equals" : [{"Ref" : "MeetingAdminTableName"}, ""]},
+    "CreateMeetingTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateMeetingTable"}, "true"]},
+    "MeetingTableNameGenerated" : {"Fn::Equals" : [{"Ref" : "MeetingTableName"}, ""]},
     "CreateInstanceTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateInstanceTable"}, "true"]},
     "InstanceTableNameGenerated" : {"Fn::Equals" : [{"Ref" : "InstanceTableName"}, ""]},
     "CreateShoppingSessionTable" : {"Fn::Equals" : [{"Ref" : "ShouldCreateShoppingSessionTable"}, "true"]},
@@ -134,6 +158,20 @@
           {
             "DynamoDBCrudPolicy": {
               "TableName": {
+                "Fn::If" : ["CreateMeetingAdminTable", {"Ref":"MeetingAdminTable"}, { "Ref" : "MeetingAdminTableName" } ]
+              }
+            }
+          },
+          {
+            "DynamoDBCrudPolicy": {
+              "TableName": {
+                "Fn::If" : ["CreateMeetingTable", {"Ref":"MeetingTable"}, { "Ref" : "MeetingTableName" } ]
+              }
+            }
+          },
+          {
+            "DynamoDBCrudPolicy": {
+              "TableName": {
                 "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ]
               }
             }
@@ -156,6 +194,8 @@
         "Environment": {
           "Variables": {
             "CONNECTION_TABLE_NAME": { "Ref": "ConnectionMappingTableName" },
+            "MeetingAdminTable" : { "Fn::If" : ["CreateMeetingAdminTable", {"Ref":"MeetingAdminTable"}, { "Ref" : "MeetingAdminTableName" } ] },
+            "MeetingTable" : { "Fn::If" : ["CreateMeetingTable", {"Ref":"MeetingTable"}, { "Ref" : "MeetingTableName" } ] },
             "InstanceTable" : { "Fn::If" : ["CreateInstanceTable", {"Ref":"InstanceTable"}, { "Ref" : "InstanceTableName" } ] },
             "ShoppingSessionTable" : { "Fn::If" : ["CreateShoppingSessionTable", {"Ref":"ShoppingSessionTable"}, { "Ref" : "ShoppingSessionTableName" } ] }
           }
@@ -376,6 +416,34 @@
           "Ref": "SendMessageFunction"
         },
         "Principal": "apigateway.amazonaws.com"
+      }
+    },
+    "MeetingAdminTable" : {
+        "Type": "AWS::DynamoDB::Table",
+        "Condition" : "CreateMeetingAdminTable",
+        "Properties" : {
+          "TableName" : { "Fn::If" : ["MeetingAdminTableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "MeetingAdminTableName" } ] },
+          "AttributeDefinitions" : [
+            {"AttributeName" : "Id", "AttributeType" : "S"}
+          ],
+          "KeySchema"            : [
+            {"AttributeName" : "Id", "KeyType" : "HASH"}
+          ],
+        "BillingMode": "PAY_PER_REQUEST"
+      }
+    },
+    "MeetingTable" : {
+        "Type": "AWS::DynamoDB::Table",
+        "Condition" : "CreateMeetingTable",
+        "Properties" : {
+          "TableName" : { "Fn::If" : ["MeetingTableNameGenerated", {"Ref" : "AWS::NoValue" }, { "Ref" : "MeetingTableName" } ] },
+          "AttributeDefinitions" : [
+            {"AttributeName" : "Id", "AttributeType" : "S"}
+          ],
+          "KeySchema"            : [
+            {"AttributeName" : "Id", "KeyType" : "HASH"}
+          ],
+        "BillingMode": "PAY_PER_REQUEST"
       }
     },
     "InstanceTable" : {

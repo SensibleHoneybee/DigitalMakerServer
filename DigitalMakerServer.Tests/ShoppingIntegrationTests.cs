@@ -37,7 +37,9 @@ public class ShoppingIntegrationTests
         {
             ShoppingSessionId = "Test session ID",
             InstanceId = instanceId,
-            ShopperName = "Test shopper name"
+            ShopperName = "Test shopper name",
+            MeetingId = "Test meeting ID",
+            MeetingPassword = "Test meeting password"
         };
 
         var outerRequest = new RequestWrapper
@@ -53,6 +55,8 @@ public class ShoppingIntegrationTests
         };
 
         var message = JsonConvert.SerializeObject(outerRequest);
+
+        var meetingStorage = new MeetingStorage { MeetingPasswordHash = "Test password hash" };
 
         _mockDDBClient.Setup(client => client.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()))
             .Callback<ScanRequest, CancellationToken>((request, token) =>
@@ -86,6 +90,13 @@ public class ShoppingIntegrationTests
                 messagesReceived.Add(new ResponseDetails(actualMessage, request.ConnectionId));
             });
 
+        var meetingAdminTableDynamoDBContext = new Mock<IDynamoDBContext>();
+
+        var meetingTableDynamoDBContext = new Mock<IDynamoDBContext>();
+        meetingTableDynamoDBContext
+            .Setup(x => x.LoadAsync<MeetingStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult(meetingStorage));
+
         var instanceTableDynamoDBContext = new Mock<IDynamoDBContext>();
         instanceTableDynamoDBContext
             .Setup(x => x.LoadAsync<InstanceStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
@@ -97,11 +108,17 @@ public class ShoppingIntegrationTests
             .Setup(x => x.SaveAsync<ShoppingSessionStorage>(It.IsAny<ShoppingSessionStorage>(), It.IsAny<CancellationToken>()))
             .Callback<ShoppingSessionStorage, CancellationToken>((ss, ct) => outputShoppingSessionStorage = ss);
 
+        var secretHasher = new Mock<ISecretHasher>();
+        secretHasher.Setup(x => x.Verify(innerRequest.MeetingPassword, meetingStorage.MeetingPasswordHash)).Returns(true);
+
         var functions = new Functions(
             _mockDDBClient.Object,
             apiGatewayFactory,
+            meetingAdminTableDynamoDBContext.Object,
+            meetingTableDynamoDBContext.Object,
             instanceTableDynamoDBContext.Object,
             shoppingSessionTableDynamoDBContext.Object,
+            secretHasher.Object,
             tableName);
 
         var lambdaContext = new TestLambdaContext();
