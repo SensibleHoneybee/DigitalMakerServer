@@ -457,7 +457,17 @@
           "KeySchema"            : [
             {"AttributeName" : "Id", "KeyType" : "HASH"}
           ],
-        "BillingMode": "PAY_PER_REQUEST"
+          "BillingMode": "PAY_PER_REQUEST",
+           "GlobalSecondaryIndexes": [{
+                "IndexName": "InstanceParticipantIdIndex",
+                "KeySchema": [{
+                    "AttributeName": "ParticipantId",
+                    "KeyType": "HASH"
+                }],
+                "Projection": {
+                    "ProjectionType": "KEYS_ONLY"
+                }
+            }]
       }
     },
     "ShoppingSessionTable" : {

@@ -1,8 +1,10 @@
 ﻿namespace DigitalMakerApi.Requests
 {
-    public class ConnectCustomerScannerRequest
+    public class AddNewVariableRequest
     {
-        public string ShoppingSessionId { get; set; } = string.Empty;
+        public string InstanceId { get; set; } = string.Empty;
+
+        public string VariableName { get; set; } = string.Empty;
 
         public string MeetingId { get; set; } = string.Empty;
 

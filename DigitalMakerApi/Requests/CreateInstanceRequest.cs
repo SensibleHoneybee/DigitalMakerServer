@@ -1,15 +1,11 @@
 ﻿namespace DigitalMakerApi.Requests
 {
-    public class CreateInstanceRequest
+    public class GetOrCreateInstanceRequest
     {
-        public string InstanceId { get; set; } = string.Empty;
-
-        public string InstanceName { get; set; } = string.Empty;
-
-        public string PlayerName { get; set; } = string.Empty;
-
         public string MeetingId { get; set; } = string.Empty;
 
-        public string MeetingPassword { get; set; } = string.Empty;
+        public string ParticipantId { get; set; } = string.Empty;
+
+        public string LoginCipher { get; set; } = string.Empty;
     }
 }

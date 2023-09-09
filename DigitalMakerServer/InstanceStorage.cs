@@ -12,8 +12,8 @@ namespace DigitalMakerServer
 
         public string Id { get; set; }
 
-        ////[DynamoDBGlobalSecondaryIndexHashKey("InstanceIndex")]
-        ////public string InstanceCode { get; set; }
+        [DynamoDBGlobalSecondaryIndexHashKey("InstanceParticipantIdIndex")]
+        public string ParticipantId { get; set; } = string.Empty;
 
         public DateTime CreatedTimestamp { get; set; }
 

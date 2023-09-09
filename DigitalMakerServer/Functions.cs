@@ -263,14 +263,14 @@ public class Functions
                 List<ResponseWithClientId> responsesWithClientIds;
                 switch (requestWrapper.RequestType)
                 {
-                    case RequestType.ConnectMeetingAdmin:
-                        var connectMeetingAdminRequest = JsonConvert.DeserializeObject<ConnectMeetingAdminRequest>(requestWrapper.Content);
-                        if (connectMeetingAdminRequest == null)
+                    case RequestType.LoginMeetingAdmin:
+                        var loginMeetingAdminRequest = JsonConvert.DeserializeObject<LoginMeetingAdminRequest>(requestWrapper.Content);
+                        if (loginMeetingAdminRequest == null)
                         {
-                            context.Logger.LogLine("Root request content was not a valid ConnectMeetingAdminRequest");
+                            context.Logger.LogLine("Root request content was not a valid LoginMeetingAdminRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectMeetingAdminAsync(connectMeetingAdminRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await this.DigitalMakerEngine.LoginMeetingAdminAsync(loginMeetingAdminRequest, connectionId, context.Logger);
                         break;
                     case RequestType.CreateMeeting:
                         var createMeetingRequest = JsonConvert.DeserializeObject<CreateMeetingRequest>(requestWrapper.Content);
@@ -281,6 +281,15 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.CreateMeetingAsync(createMeetingRequest, connectionId, context.Logger);
                         break;
+                    case RequestType.JoinMeetingAsAdmin:
+                        var joinMeetingAsAdminRequest = JsonConvert.DeserializeObject<JoinMeetingAsAdminRequest>(requestWrapper.Content);
+                        if (joinMeetingAsAdminRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid JoinMeetingAsAdminRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.JoinMeetingAsAdminAsync(joinMeetingAsAdminRequest, connectionId, context.Logger);
+                        break;
                     case RequestType.JoinMeeting:
                         var joinMeetingRequest = JsonConvert.DeserializeObject<JoinMeetingRequest>(requestWrapper.Content);
                         if (joinMeetingRequest == null)
@@ -290,14 +299,50 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.JoinMeetingAsync(joinMeetingRequest, connectionId, context.Logger);
                         break;
-                    case RequestType.CreateInstance:
-                        var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(requestWrapper.Content);
-                        if (createInstanceRequest == null)
+                    case RequestType.GetParticipantsForMeeting:
+                        var getParticipantsForMeetingRequest = JsonConvert.DeserializeObject<GetParticipantsForMeetingRequest>(requestWrapper.Content);
+                        if (getParticipantsForMeetingRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid GetParticipantsForMeetingRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.GetParticipantsForMeetingAsync(getParticipantsForMeetingRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.JoinNewParticipant:
+                        var joinNewParticipantRequest = JsonConvert.DeserializeObject<JoinNewParticipantRequest>(requestWrapper.Content);
+                        if (joinNewParticipantRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid JoinNewParticipantRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.JoinNewParticipantAsync(joinNewParticipantRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.RejoinMeetingAndParticipantWithLoginCipher:
+                        var rejoinMeetingAndParticipantWithLoginCipherRequest = JsonConvert.DeserializeObject<RejoinMeetingAndParticipantWithLoginCipherRequest>(requestWrapper.Content);
+                        if (rejoinMeetingAndParticipantWithLoginCipherRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid RejoinMeetingAndParticipantWithLoginCipherRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.RejoinMeetingAndParticipantWithLoginCipherAsync(rejoinMeetingAndParticipantWithLoginCipherRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.RejoinParticipantWithPassword:
+                        var rejoinParticipantWithPasswordRequest = JsonConvert.DeserializeObject<RejoinParticipantWithPasswordRequest>(requestWrapper.Content);
+                        if (rejoinParticipantWithPasswordRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid RejoinParticipantWithPasswordRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.RejoinParticipantWithPasswordAsync(rejoinParticipantWithPasswordRequest, connectionId, context.Logger);
+                        break;
+                    case RequestType.GetOrCreateInstance:
+                        var getOrCreateInstanceRequest = JsonConvert.DeserializeObject<GetOrCreateInstanceRequest>(requestWrapper.Content);
+                        if (getOrCreateInstanceRequest == null)
                         {
                             context.Logger.LogLine("Root request content was not a valid CreateInstanceRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await this.DigitalMakerEngine.GetOrCreateInstanceAsync(getOrCreateInstanceRequest, connectionId, context.Logger);
                         break;
                     case RequestType.ReconnectInstanceAdmin:
                         var reconnectInstanceAdminRequest = JsonConvert.DeserializeObject<ReconnectInstanceAdminRequest>(requestWrapper.Content);

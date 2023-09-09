@@ -37,11 +37,11 @@ namespace DigitalMakerServer
             this.secretHasher = secretHasher;
         }
 
-        public async Task<List<ResponseWithClientId>> ConnectMeetingAdminAsync(ConnectMeetingAdminRequest request, string connectionId, ILambdaLogger logger)
+        public async Task<List<ResponseWithClientId>> LoginMeetingAdminAsync(LoginMeetingAdminRequest request, string connectionId, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.MeetingAdminPassword))
             {
-                throw new Exception("ConnectMeetingAdminRequest.MeetingAdminPassword must be supplied");
+                throw new Exception("LoginMeetingAdminRequest.MeetingAdminPassword must be supplied");
             }
 
             var meetingAdminStorage = await this.meetingAdminTableDDBContext.LoadAsync<MeetingAdminStorage>(MeetingAdminSingletonId);
@@ -57,7 +57,7 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving meeting admin with id {MeetingAdminSingletonId}.");
             await this.meetingAdminTableDDBContext.SaveAsync<MeetingAdminStorage>(meetingAdminStorage);
 
-            var response = new ConnectedMeetingAdminResponse();
+            var response = new MeetingAdminLoggedInResponse();
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
@@ -92,21 +92,27 @@ namespace DigitalMakerServer
                 throw new Exception("Meeting Admin password incorrect");
             }
 
+            var meeting = new Meeting
+            {
+                MeetingName = request.MeetingName,
+                MeetingPasswordHash = this.secretHasher.Hash(request.MeetingPassword),
+                IsActive = true
+            };
+
             var meetingStorage = new MeetingStorage
             {
                 Id = request.MeetingId,
-                MeetingName = request.MeetingName,
-                MeetingPasswordHash = this.secretHasher.Hash(request.MeetingPassword),
+                Content = JsonConvert.SerializeObject(meeting),
                 MeetingAdminConnectionId = connectionId,
                 CreatedTimestamp = DateTime.UtcNow
             };
 
-            logger.LogLine($"Created meeting bits. ID: {meetingStorage.Id}. Name: {meetingStorage.MeetingName}");
+            logger.LogLine($"Created meeting bits. ID: {meetingStorage.Id}. Name: {meeting.MeetingName}");
 
             logger.LogLine($"Saving meeting with id {meetingStorage.Id}");
             await this.meetingTableDDBContext.SaveAsync<MeetingStorage>(meetingStorage);
 
-            var response = new SuccessResponse { Message = $"Successfully created meeting {request.MeetingName}. Meeting ID: {request.MeetingId}" };
+            var response = new MeetingOnlyResponse { MeetingId = request.MeetingId, MeetingName = request.MeetingName };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
@@ -128,12 +134,17 @@ namespace DigitalMakerServer
 
             if (!this.secretHasher.Verify(request.MeetingAdminPassword, meetingAdminStorage.MeetingAdminPasswordHash))
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception("Meeting password incorrect");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
 
-            var response = new FullMeetingResponse { MeetingId = meetingStorage.Id, MeetingName = meetingStorage.MeetingName };
+            var response = new MeetingOnlyResponse { MeetingId = meetingStorage.Id, MeetingName = meeting.MeetingName };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
@@ -152,72 +163,313 @@ namespace DigitalMakerServer
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
             }
 
-            var response = new FullMeetingResponse { MeetingId = meetingStorage.Id, MeetingName = meetingStorage.MeetingName };
+            if (!this.secretHasher.Verify(request.MeetingPassword, meeting.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting password incorrect");
+            }
+
+            var response = new MeetingOnlyResponse { MeetingId = request.MeetingId, MeetingName = meeting.MeetingName };
 
             // Response should be sent only to the caller
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
-        public async Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
+        public async Task<List<ResponseWithClientId>> GetParticipantsForMeetingAsync(GetParticipantsForMeetingRequest request, string connectionId, ILambdaLogger logger)
         {
-            if (string.IsNullOrEmpty(request.InstanceId))
+            if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.InstanceId must be supplied");
+                throw new Exception("GetParticipantsForMeetingRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.InstanceName))
+            if (string.IsNullOrEmpty(request.MeetingPassword))
             {
-                throw new Exception("CreateInstanceRequest.InstanceName must be supplied");
+                throw new Exception("GetParticipantsForMeetingRequest.MeetingPassword must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.PlayerName))
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("CreateInstanceRequest.PlayerName must be supplied");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
             }
 
+            if (!this.secretHasher.Verify(request.MeetingPassword, meeting.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting password incorrect");
+            }
+
+            var participantIdsAndNames = meeting.Participants
+                .Select(x => new ParticipantIdAndName { ParticipantId = x.ParticipantId, ParticipantNames = x.ParticipantNames })
+                .ToList();
+
+            var response = new ParticipantIdsAndNamesResponse { ParticipantIdsAndNames = participantIdsAndNames };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> JoinNewParticipantAsync(JoinNewParticipantRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingPassword must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.ParticipantId))
+            {
+                throw new Exception("JoinMeetingRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.ParticipantNames))
+            {
+                throw new Exception("JoinMeetingRequest.ParticipantNames must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.ParticipantPassword))
+            {
+                throw new Exception("JoinMeetingRequest.ParticipantPassword must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("JoinMeetingRequest.LoginCipher must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            if (!this.secretHasher.Verify(request.MeetingPassword, meeting.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting password incorrect");
+            }
+
+            meeting.Participants.Add(
+                new ParticipantDetails
+                {
+                    ParticipantId = request.ParticipantId,
+                    ParticipantNames = request.ParticipantNames,
+                    ParticipantPasswordHash = this.secretHasher.Hash(request.ParticipantPassword),
+                    LoginCipher = request.LoginCipher
+                });
+
+            meetingStorage.Content = JsonConvert.SerializeObject(meeting);
+
+            // And save it back
+            logger.LogLine($"Saving meeting with id {meetingStorage.Id}.");
+            await this.instanceTableDDBContext.SaveAsync<MeetingStorage>(meetingStorage);
+
+            var response = new MeetingWithParticipantResponse
+            {
+                MeetingId = meetingStorage.Id,
+                MeetingName = meeting.MeetingName,
+                ParticipantId = request.ParticipantId,
+                ParticipantNames = request.ParticipantNames,
+                LoginCipher = request.LoginCipher
+            };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> RejoinMeetingAndParticipantWithLoginCipherAsync(RejoinMeetingAndParticipantWithLoginCipherRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("RejoinMeetingAndParticipantWithLoginCipherRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.ParticipantId))
+            {
+                throw new Exception("RejoinMeetingAndParticipantWithLoginCipherRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("RejoinMeetingAndParticipantWithLoginCipherRequest.LoginCipher must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher incorrect");
+            }
+
+            var response = new MeetingWithParticipantResponse
+            {
+                MeetingId = meetingStorage.Id,
+                MeetingName = meeting.MeetingName,
+                ParticipantId = participant.ParticipantId,
+                ParticipantNames = participant.ParticipantNames,
+                LoginCipher = request.LoginCipher,
+
+            };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> RejoinParticipantWithPasswordAsync(RejoinParticipantWithPasswordRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingPassword))
+            {
+                throw new Exception("JoinMeetingRequest.MeetingPassword must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            if (!this.secretHasher.Verify(request.MeetingPassword, meeting.MeetingPasswordHash))
+            {
+                throw new Exception("Meeting password incorrect");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (!this.secretHasher.Verify(request.ParticipantPassword, participant.ParticipantPasswordHash))
+            {
+                throw new Exception("Participant password incorrect");
+            }
+
+            meetingStorage.Content = JsonConvert.SerializeObject(meeting);
+
+            // And save it back
+            logger.LogLine($"Saving meeting with id {meetingStorage.Id}.");
+            await this.instanceTableDDBContext.SaveAsync<MeetingStorage>(meetingStorage);
+
+            var response = new MeetingOnlyResponse { MeetingId = meetingStorage.Id, MeetingName = meeting.MeetingName };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
+        public async Task<List<ResponseWithClientId>> GetOrCreateInstanceAsync(GetOrCreateInstanceRequest request, string connectionId, ILambdaLogger logger)
+        {
             if (string.IsNullOrEmpty(request.MeetingId))
             {
                 throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("CreateInstanceRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("CreateInstanceRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
             }
 
-            var instance = new Instance
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
             {
-                InstanceId = request.InstanceId,
-                InstanceName = request.InstanceName,
-                PlayerName = request.PlayerName,
-                InstanceState = InstanceState.NotRunning
-            };
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
 
-            logger.LogLine($"Created instance bits. ID: {instance.InstanceId}. Name: {instance.InstanceName}");
-
-            // And create wrapper to store it in DynamoDB
-            var instanceStorage = new InstanceStorage
+            if (request.LoginCipher != participant.LoginCipher)
             {
-                Id = request.InstanceId,
-                CreatedTimestamp = DateTime.UtcNow,
-                Content = JsonConvert.SerializeObject(instance),
-                InstanceAdminConnectionId = connectionId
-            };
+                throw new Exception("Login cipher is incorrect");
+            }
 
-            logger.LogLine($"Saving instance with id {instanceStorage.Id}");
-            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+            // Now locate instanes Find the instance in question
+            var config = new DynamoDBOperationConfig { IndexName = "GameCodeIndex" };
+
+            var queryResult = await this.instanceTableDDBContext.QueryAsync<InstanceStorage>(request.ParticipantId, config).GetRemainingAsync();
+
+            Instance instance = null;
+            InstanceStorage instanceStorage = null;
+
+            if (queryResult.Count == 0)
+            {
+                // No instance yet for this participant. Create one.
+                var instanceId = Guid.NewGuid().ToString();
+                var instanceName = $"Instance for {participant.ParticipantNames}";
+                instance = new Instance
+                {
+                    InstanceId = instanceId,
+                    InstanceName = instanceName,
+                    InstanceState = InstanceState.NotRunning
+                };
+
+                logger.LogLine($"Created instance bits. ID: {instance.InstanceId}. Name: {instance.InstanceName}");
+
+                // And create wrapper to store it in DynamoDB
+                instanceStorage = new InstanceStorage
+                {
+                    Id = instanceId,
+                    ParticipantId = request.ParticipantId,
+                    CreatedTimestamp = DateTime.UtcNow,
+                    Content = JsonConvert.SerializeObject(instance),
+                    InstanceAdminConnectionId = connectionId
+                };
+
+                logger.LogLine($"Saving instance with id {instanceStorage.Id}");
+                await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+            }
+            else if (queryResult.Count > 1)
+            {
+                throw new Exception($"More than one instance for participant(s) {participant.ParticipantNames} was found.");
+            }
+            else
+            {
+                // Loadaed a single instance.
+                var instanceStorageIdHolder = queryResult.Single();
+
+                instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(instanceStorageIdHolder.Id);
+                var possibleInstance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+                if (possibleInstance == null)
+                {
+                    throw new Exception($"Instance {instanceStorageIdHolder.Id} has no valid content");
+                }
+
+                instance = possibleInstance;
+            }
 
             var response = new FullInstanceResponse { Instance = instance };
 
@@ -234,18 +486,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("ReconnectInstanceAdminRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("ReconnectInstanceAdminRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("ReconnectInstanceAdminRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
@@ -282,18 +551,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("AddNewInputEventHandlerRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("AddNewInputEventHandlerRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("AddNewInputEventHandlerRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
@@ -328,6 +614,83 @@ namespace DigitalMakerServer
             return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
+        public async Task<List<ResponseWithClientId>> AddNewVariableAsync(AddNewVariableRequest request, string connectionId, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.InstanceId))
+            {
+                throw new Exception("AddNewVariableRequest.InstanceId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.VariableName))
+            {
+                throw new Exception("AddNewVariableRequest.VariableName must not be empty");
+            }
+
+            if (string.IsNullOrEmpty(request.MeetingId))
+            {
+                throw new Exception("AddNewVariableRequest.MeetingId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.ParticipantId))
+            {
+                throw new Exception("AddNewVariableRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("AddNewVariableRequest.LoginCipher must be supplied");
+            }
+
+            var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
+            }
+
+            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+            if (instanceStorage.InstanceAdminConnectionId != connectionId)
+            {
+                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect.");
+            }
+
+            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
+            if (instance == null)
+            {
+                throw new Exception($"Instance {request.InstanceId} has no valid content");
+            }
+
+            if (instance.Variables.Any(x => string.Equals(x.Name, request.VariableName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new Exception($"There is already a variable with the name {request.VariableName}.");
+            }
+
+            instance.Variables.Add(new Variable { Name = request.VariableName });
+
+            // Update the game in the DB
+            instanceStorage.Content = JsonConvert.SerializeObject(instance);
+
+            // And save it back
+            logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
+            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+
+            var response = new FullInstanceResponse { Instance = instance };
+
+            // Response should be sent only to the caller
+            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+        }
+
         public async Task<List<ResponseWithClientId>> StartCheckoutAsync(StartCheckoutRequest request, string connectionId, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.ShoppingSessionId))
@@ -342,18 +705,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("StartShoppingRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("StartShoppingRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("StartShoppingRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
@@ -409,18 +789,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("ConnectCustomerScannerRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("ConnectCustomerScannerRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("ConnectCustomerScannerRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
@@ -459,18 +856,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("ReconnectShoppingSessionRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("ReconnectShoppingSessionRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("ReconnectShoppingSessionRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             var shoppingSessionStorage = await this.shoppingSessionTableDDBContext.LoadAsync<ShoppingSessionStorage>(request.ShoppingSessionId);
@@ -514,18 +928,35 @@ namespace DigitalMakerServer
 
             if (string.IsNullOrEmpty(request.MeetingId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingId must be supplied");
+                throw new Exception("InputReceivedRequest.MeetingId must be supplied");
             }
 
-            if (string.IsNullOrEmpty(request.MeetingPassword))
+            if (string.IsNullOrEmpty(request.ParticipantId))
             {
-                throw new Exception("CreateInstanceRequest.MeetingPassword must be supplied");
+                throw new Exception("InputReceivedRequest.ParticipantId must be supplied");
+            }
+
+            if (string.IsNullOrEmpty(request.LoginCipher))
+            {
+                throw new Exception("InputReceivedRequest.LoginCipher must be supplied");
             }
 
             var meetingStorage = await this.meetingTableDDBContext.LoadAsync<MeetingStorage>(request.MeetingId);
-            if (!this.secretHasher.Verify(request.MeetingPassword, meetingStorage.MeetingPasswordHash))
+            var meeting = JsonConvert.DeserializeObject<Meeting>(meetingStorage.Content);
+            if (meeting == null)
             {
-                throw new Exception("Meeting Admin password incorrect");
+                throw new Exception($"Meeting {request.MeetingId} has no valid content");
+            }
+
+            var participant = meeting.Participants.SingleOrDefault(x => x.ParticipantId == request.ParticipantId);
+            if (participant == null)
+            {
+                throw new Exception($"Meeting {request.MeetingId} does not have a participant with ID {request.ParticipantId}");
+            }
+
+            if (request.LoginCipher != participant.LoginCipher)
+            {
+                throw new Exception("Login cipher is incorrect");
             }
 
             // Find the shopping session in question

@@ -32,6 +32,8 @@ public class ShoppingIntegrationTests
         string connectionId = "test-id";
         string instanceAdminConnectionId = "instance-admin-test-id";
         string instanceId = "Test instance ID";
+        string participantId = "Test participant ID";
+        string loginCipher = "Test login cipher";
 
         var innerRequest = new StartCheckoutRequest
         {
@@ -39,7 +41,8 @@ public class ShoppingIntegrationTests
             InstanceId = instanceId,
             ShopperName = "Test shopper name",
             MeetingId = "Test meeting ID",
-            MeetingPassword = "Test meeting password"
+            ParticipantId = participantId,
+            LoginCipher = loginCipher
         };
 
         var outerRequest = new RequestWrapper
@@ -56,7 +59,10 @@ public class ShoppingIntegrationTests
 
         var message = JsonConvert.SerializeObject(outerRequest);
 
-        var meetingStorage = new MeetingStorage { MeetingPasswordHash = "Test password hash" };
+        var participant = new ParticipantDetails { ParticipantId = participantId, LoginCipher = loginCipher };
+        var meeting = new Meeting { Participants = new List<ParticipantDetails> { participant } };
+
+        var meetingStorage = new MeetingStorage { Content = JsonConvert.SerializeObject(meeting) };
 
         _mockDDBClient.Setup(client => client.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()))
             .Callback<ScanRequest, CancellationToken>((request, token) =>
@@ -109,7 +115,6 @@ public class ShoppingIntegrationTests
             .Callback<ShoppingSessionStorage, CancellationToken>((ss, ct) => outputShoppingSessionStorage = ss);
 
         var secretHasher = new Mock<ISecretHasher>();
-        secretHasher.Setup(x => x.Verify(innerRequest.MeetingPassword, meetingStorage.MeetingPasswordHash)).Returns(true);
 
         var functions = new Functions(
             _mockDDBClient.Object,

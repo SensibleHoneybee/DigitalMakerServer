@@ -2,9 +2,13 @@
 {
     public static class DigitalMakerResponseType
     {
-        public const string ConnectedMeetingAdmin = "ConnectedMeetingAdmin";
+        public const string MeetingAdminLoggedIn = "MeetingAdminLoggedIn";
 
-        public const string FullMeeting = "FullMeeting";
+        public const string MeetingOnly = "MeetingOnly";
+
+        public const string MeetingWithParticipant = "MeetingWithParticipant";
+
+        public const string ParticipantIdsAndNames = "ParticipantIdsAndNames";
 
         public const string FullInstance = "FullInstance";
 

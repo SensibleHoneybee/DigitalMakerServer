@@ -7,8 +7,7 @@ namespace DigitalMakerServer
         public MeetingStorage()
         {
             this.Id = string.Empty;
-            this.MeetingName = string.Empty;
-            this.MeetingPasswordHash = string.Empty;
+            this.Content = string.Empty;
         }
 
         public string Id { get; set; }
@@ -18,11 +17,7 @@ namespace DigitalMakerServer
 
         public DateTime CreatedTimestamp { get; set; }
 
-        public string MeetingName { get; set; }
-
-        public string MeetingPasswordHash { get; set; }
-
-        public bool IsActive { get; set; }
+        public string Content { get; set; }
 
         public string MeetingAdminConnectionId { get; set; } = string.Empty;
 

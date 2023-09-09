@@ -2,13 +2,13 @@
 
 namespace DigitalMakerApi.Responses
 {
-    public class FullMeetingResponse : IResponse
+    public class MeetingOnlyResponse : IResponse
     {
         public string MeetingId { get; set; } = string.Empty;
 
         public string MeetingName { get; set; } = string.Empty;
 
         [JsonIgnore]
-        public string ResponseType => DigitalMakerResponseType.FullMeeting;
+        public string ResponseType => DigitalMakerResponseType.MeetingOnly;
     }
 }

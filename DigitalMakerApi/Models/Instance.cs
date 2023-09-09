@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Amazon.DynamoDBv2.DataModel;
+using System.Collections.Generic;
 
 namespace DigitalMakerApi.Models
 {
@@ -7,8 +8,6 @@ namespace DigitalMakerApi.Models
         public string InstanceId { get; set; } = string.Empty;
 
         public string InstanceName { get; set; } = string.Empty;
-
-        public string PlayerName { get; set; } = string.Empty;
 
         public string InstanceState { get; set; } = string.Empty;
 
