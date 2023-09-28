@@ -17,52 +17,35 @@ using DigitalMakerApi.Models;
 
 namespace DigitalMakerServer.Tests;
 
-public class ShoppingIntegrationTests
+public class InstanceIntegrationTests
 {
-    public ShoppingIntegrationTests()
+    public InstanceIntegrationTests()
     {
     }
 
     [Fact]
-    public async Task TestStartShopping()
+    public async Task TestGetOrCreateInstanceBrandNew()
     {
         Mock<IAmazonDynamoDB> _mockDDBClient = new Mock<IAmazonDynamoDB>();
         Mock<IAmazonApiGatewayManagementApi> _mockApiGatewayClient = new Mock<IAmazonApiGatewayManagementApi>();
         string tableName = "mocktable";
         string connectionId = "test-id";
-        string instanceAdminConnectionId = "instance-admin-test-id";
         string instanceId = "Test instance ID";
-        string participantId = "Test participant ID";
-        string loginCipher = "Test login cipher";
+        string participantNames = "Test participant Names";
 
-        var innerRequest = new StartCheckoutRequest
+        var innerRequest = new GetOrCreateInstanceRequest
         {
-            ShoppingSessionId = "Test session ID",
             InstanceId = instanceId,
-            ShopperName = "Test shopper name",
-            MeetingId = "Test meeting ID",
-            ParticipantId = participantId,
-            LoginCipher = loginCipher
+            ParticipantNames = participantNames
         };
 
         var outerRequest = new RequestWrapper
         {
-            RequestType = RequestType.StartCheckout,
+            RequestType = RequestType.GetOrCreateInstance,
             Content = JsonConvert.SerializeObject(innerRequest)
         };
 
-        var instanceStorage = new InstanceStorage
-        {
-            InstanceAdminConnectionId = instanceAdminConnectionId,
-            Content = JsonConvert.SerializeObject(new Instance { InstanceId = instanceId })
-        };
-
         var message = JsonConvert.SerializeObject(outerRequest);
-
-        var participant = new ParticipantDetails { ParticipantId = participantId, LoginCipher = loginCipher };
-        var meeting = new Meeting { Participants = new List<ParticipantDetails> { participant } };
-
-        var meetingStorage = new MeetingStorage { Content = JsonConvert.SerializeObject(meeting) };
 
         _mockDDBClient.Setup(client => client.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()))
             .Callback<ScanRequest, CancellationToken>((request, token) =>
@@ -76,8 +59,7 @@ public class ShoppingIntegrationTests
                 {
                     Items = new List<Dictionary<string, AttributeValue>>
                     {
-                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } },
-                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = instanceAdminConnectionId } } } }
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } }
                     }
                 });
             });
@@ -96,34 +78,23 @@ public class ShoppingIntegrationTests
                 messagesReceived.Add(new ResponseDetails(actualMessage, request.ConnectionId));
             });
 
-        var meetingAdminTableDynamoDBContext = new Mock<IDynamoDBContext>();
-
-        var meetingTableDynamoDBContext = new Mock<IDynamoDBContext>();
-        meetingTableDynamoDBContext
-            .Setup(x => x.LoadAsync<MeetingStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult(meetingStorage));
-
+        // Brand new instance, so load returns null
         var instanceTableDynamoDBContext = new Mock<IDynamoDBContext>();
         instanceTableDynamoDBContext
-            .Setup(x => x.LoadAsync<InstanceStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.FromResult(instanceStorage));
+            .Setup(x => x.LoadAsync<InstanceStorage?>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult((InstanceStorage?)null));
 
-        ShoppingSessionStorage? outputShoppingSessionStorage = null;
-        var shoppingSessionTableDynamoDBContext = new Mock<IDynamoDBContext>();
-        shoppingSessionTableDynamoDBContext
-            .Setup(x => x.SaveAsync<ShoppingSessionStorage>(It.IsAny<ShoppingSessionStorage>(), It.IsAny<CancellationToken>()))
-            .Callback<ShoppingSessionStorage, CancellationToken>((ss, ct) => outputShoppingSessionStorage = ss);
+        InstanceStorage? outputInstanceStorage = null;
+        instanceTableDynamoDBContext
+            .Setup(x => x.SaveAsync<InstanceStorage>(It.IsAny<InstanceStorage>(), It.IsAny<CancellationToken>()))
+            .Callback<InstanceStorage, CancellationToken>((ss, ct) => outputInstanceStorage = ss);
 
         var secretHasher = new Mock<ISecretHasher>();
 
         var functions = new Functions(
             _mockDDBClient.Object,
             apiGatewayFactory,
-            meetingAdminTableDynamoDBContext.Object,
-            meetingTableDynamoDBContext.Object,
             instanceTableDynamoDBContext.Object,
-            shoppingSessionTableDynamoDBContext.Object,
-            secretHasher.Object,
             tableName);
 
         var lambdaContext = new TestLambdaContext();
@@ -144,25 +115,257 @@ public class ShoppingIntegrationTests
         Assert.Equal(200, response.StatusCode);
 
         // Check that the saved shopping session matches expected data
-        Assert.NotNull(outputShoppingSessionStorage);
-        Assert.Equal(connectionId, outputShoppingSessionStorage.CheckoutConnectionId);
-        Assert.Null(outputShoppingSessionStorage.CustomerScannerConnectionId);
+        Assert.NotNull(outputInstanceStorage);
+        Assert.Equal(connectionId, outputInstanceStorage.InstanceAdminConnectionId);
 
-        // And check that the appropriate messages were sent to both the caller and to the instance admin
-        Assert.Equal(2, messagesReceived.Count);
-        foreach (var testMessage in new[] { Tuple.Create(0, connectionId), Tuple.Create(1, instanceAdminConnectionId) })
-        {
-            var responseDetails = messagesReceived[testMessage.Item1];
-            Assert.Equal(testMessage.Item2, responseDetails.ConnectionId);
-            var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(responseDetails.Response);
-            Assert.NotNull(responseWrapper);
-            Assert.Equal(DigitalMakerResponseType.FullShoppingSession, responseWrapper.ResponseType);
-            var messageResponse = JsonConvert.DeserializeObject<FullShoppingSessionResponse>(responseWrapper.Content);
-            Assert.NotNull(messageResponse);
-            Assert.Equal(innerRequest.ShoppingSessionId, messageResponse.ShoppingSession.ShoppingSessionId);
-            Assert.Equal(instanceId, messageResponse.Instance.InstanceId);
-        }
+        // And check that the appropriate messages were sent to the caller
+        Assert.Single(messagesReceived);
+        var messageReceived = messagesReceived.Single();
+        Assert.Equal(connectionId, messageReceived.ConnectionId);
+
+        var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(messageReceived.Response);
+        Assert.NotNull(responseWrapper);
+        Assert.Equal(DigitalMakerResponseType.FullInstance, responseWrapper.ResponseType);
+
+        var messageResponse = JsonConvert.DeserializeObject<FullInstanceResponse>(responseWrapper.Content);
+        Assert.NotNull(messageResponse);
+        Assert.Equal(instanceId, messageResponse.Instance.InstanceId);
+        Assert.Equal(participantNames, messageResponse.Instance.ParticipantNames);
     }
-    
+
+    [Fact]
+    public async Task TestGetOrCreateInstanceExistingNewConnectionIdAndNames()
+    {
+        Mock<IAmazonDynamoDB> _mockDDBClient = new Mock<IAmazonDynamoDB>();
+        Mock<IAmazonApiGatewayManagementApi> _mockApiGatewayClient = new Mock<IAmazonApiGatewayManagementApi>();
+        string tableName = "mocktable";
+        string connectionId = "test-id";
+        string newConnectionId = "test-id-new";
+        string instanceId = "Test instance ID";
+        string participantNames = "Test participant Names";
+        string newParticipantNames = "Test participant Names NEW";
+
+        var innerRequest = new GetOrCreateInstanceRequest
+        {
+            InstanceId = instanceId,
+            ParticipantNames = newParticipantNames
+        };
+
+        var outerRequest = new RequestWrapper
+        {
+            RequestType = RequestType.GetOrCreateInstance,
+            Content = JsonConvert.SerializeObject(innerRequest)
+        };
+
+        var instanceStorage = new InstanceStorage
+        {
+            InstanceAdminConnectionId = connectionId,
+            Content = JsonConvert.SerializeObject(new Instance { InstanceId = instanceId, ParticipantNames = participantNames })
+        };
+
+        var message = JsonConvert.SerializeObject(outerRequest);
+
+        _mockDDBClient.Setup(client => client.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ScanRequest, CancellationToken>((request, token) =>
+            {
+                Assert.Equal(tableName, request.TableName);
+                Assert.Equal(Functions.ConnectionIdField, request.ProjectionExpression);
+            })
+            .Returns((ScanRequest r, CancellationToken token) =>
+            {
+                return Task.FromResult(new ScanResponse
+                {
+                    Items = new List<Dictionary<string, AttributeValue>>
+                    {
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } },
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = newConnectionId } } } }
+                    }
+                });
+            });
+
+        Func<string, IAmazonApiGatewayManagementApi> apiGatewayFactory = ((endpoint) =>
+        {
+            Assert.Equal("https://test-domain/test-stage", endpoint);
+            return _mockApiGatewayClient.Object;
+        });
+
+        var messagesReceived = new List<ResponseDetails>();
+        _mockApiGatewayClient.Setup(client => client.PostToConnectionAsync(It.IsAny<PostToConnectionRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PostToConnectionRequest, CancellationToken>((request, token) =>
+            {
+                var actualMessage = new StreamReader(request.Data).ReadToEnd();
+                messagesReceived.Add(new ResponseDetails(actualMessage, request.ConnectionId));
+            });
+
+        // Brand new instance, so load returns null
+        var instanceTableDynamoDBContext = new Mock<IDynamoDBContext>();
+        instanceTableDynamoDBContext
+            .Setup(x => x.LoadAsync<InstanceStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult(instanceStorage));
+
+        InstanceStorage? outputInstanceStorage = null;
+        instanceTableDynamoDBContext
+            .Setup(x => x.SaveAsync<InstanceStorage>(It.IsAny<InstanceStorage>(), It.IsAny<CancellationToken>()))
+            .Callback<InstanceStorage, CancellationToken>((ss, ct) => outputInstanceStorage = ss);
+
+        var secretHasher = new Mock<ISecretHasher>();
+
+        var functions = new Functions(
+            _mockDDBClient.Object,
+            apiGatewayFactory,
+            instanceTableDynamoDBContext.Object,
+            tableName);
+
+        var lambdaContext = new TestLambdaContext();
+
+        var request = new APIGatewayProxyRequest
+        {
+            RequestContext = new APIGatewayProxyRequest.ProxyRequestContext
+            {
+                ConnectionId = newConnectionId,
+                DomainName = "test-domain",
+                Stage = "test-stage"
+            },
+            Body = "{\"message\":\"sendmessage\", \"data\":" + JsonConvert.SerializeObject(message) + "}"
+        };
+
+        var response = await functions.SendMessageHandler(request, lambdaContext);
+
+        Assert.Equal(200, response.StatusCode);
+
+        // Check that the saved shopping session matches expected data
+        Assert.NotNull(outputInstanceStorage);
+        Assert.Equal(newConnectionId, outputInstanceStorage.InstanceAdminConnectionId);
+
+        // And check that the appropriate messages were sent to the caller
+        Assert.Single(messagesReceived);
+        var messageReceived = messagesReceived.Single();
+        Assert.Equal(newConnectionId, messageReceived.ConnectionId);
+
+        var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(messageReceived.Response);
+        Assert.NotNull(responseWrapper);
+        Assert.Equal(DigitalMakerResponseType.FullInstance, responseWrapper.ResponseType);
+
+        var messageResponse = JsonConvert.DeserializeObject<FullInstanceResponse>(responseWrapper.Content);
+        Assert.NotNull(messageResponse);
+        Assert.Equal(instanceId, messageResponse.Instance.InstanceId);
+        Assert.Equal(newParticipantNames, messageResponse.Instance.ParticipantNames);
+    }
+
+    [Fact]
+    public async Task TestGetOrCreateInstanceExistingSameConnectionId()
+    {
+        Mock<IAmazonDynamoDB> _mockDDBClient = new Mock<IAmazonDynamoDB>();
+        Mock<IAmazonApiGatewayManagementApi> _mockApiGatewayClient = new Mock<IAmazonApiGatewayManagementApi>();
+        string tableName = "mocktable";
+        string connectionId = "test-id";
+        string instanceId = "Test instance ID";
+        string participantNames = "Test participant Names";
+
+        var innerRequest = new GetOrCreateInstanceRequest
+        {
+            InstanceId = instanceId,
+            ParticipantNames = participantNames
+        };
+
+        var outerRequest = new RequestWrapper
+        {
+            RequestType = RequestType.GetOrCreateInstance,
+            Content = JsonConvert.SerializeObject(innerRequest)
+        };
+
+        var instanceStorage = new InstanceStorage
+        {
+            InstanceAdminConnectionId = connectionId,
+            Content = JsonConvert.SerializeObject(new Instance { InstanceId = instanceId, ParticipantNames = participantNames })
+        };
+
+        var message = JsonConvert.SerializeObject(outerRequest);
+
+        _mockDDBClient.Setup(client => client.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ScanRequest, CancellationToken>((request, token) =>
+            {
+                Assert.Equal(tableName, request.TableName);
+                Assert.Equal(Functions.ConnectionIdField, request.ProjectionExpression);
+            })
+            .Returns((ScanRequest r, CancellationToken token) =>
+            {
+                return Task.FromResult(new ScanResponse
+                {
+                    Items = new List<Dictionary<string, AttributeValue>>
+                    {
+                        { new Dictionary<string, AttributeValue>{ {Functions.ConnectionIdField, new AttributeValue { S = connectionId } } } }
+                    }
+                });
+            });
+
+        Func<string, IAmazonApiGatewayManagementApi> apiGatewayFactory = ((endpoint) =>
+        {
+            Assert.Equal("https://test-domain/test-stage", endpoint);
+            return _mockApiGatewayClient.Object;
+        });
+
+        var messagesReceived = new List<ResponseDetails>();
+        _mockApiGatewayClient.Setup(client => client.PostToConnectionAsync(It.IsAny<PostToConnectionRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PostToConnectionRequest, CancellationToken>((request, token) =>
+            {
+                var actualMessage = new StreamReader(request.Data).ReadToEnd();
+                messagesReceived.Add(new ResponseDetails(actualMessage, request.ConnectionId));
+            });
+
+        // Brand new instance, so load returns null
+        var instanceTableDynamoDBContext = new Mock<IDynamoDBContext>();
+        instanceTableDynamoDBContext
+            .Setup(x => x.LoadAsync<InstanceStorage>(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult(instanceStorage));
+
+        InstanceStorage? outputInstanceStorage = null;
+        instanceTableDynamoDBContext
+            .Setup(x => x.SaveAsync<InstanceStorage>(It.IsAny<InstanceStorage>(), It.IsAny<CancellationToken>()))
+            .Callback<InstanceStorage, CancellationToken>((ss, ct) => outputInstanceStorage = ss);
+
+        var secretHasher = new Mock<ISecretHasher>();
+
+        var functions = new Functions(
+            _mockDDBClient.Object,
+            apiGatewayFactory,
+            instanceTableDynamoDBContext.Object,
+            tableName);
+
+        var lambdaContext = new TestLambdaContext();
+
+        var request = new APIGatewayProxyRequest
+        {
+            RequestContext = new APIGatewayProxyRequest.ProxyRequestContext
+            {
+                ConnectionId = connectionId,
+                DomainName = "test-domain",
+                Stage = "test-stage"
+            },
+            Body = "{\"message\":\"sendmessage\", \"data\":" + JsonConvert.SerializeObject(message) + "}"
+        };
+
+        var response = await functions.SendMessageHandler(request, lambdaContext);
+
+        Assert.Equal(200, response.StatusCode);
+
+        // Check that there was no saved shopping session
+        Assert.Null(outputInstanceStorage);
+
+        // And check that the appropriate messages were sent to the caller
+        Assert.Single(messagesReceived);
+        var messageReceived = messagesReceived.Single();
+        Assert.Equal(connectionId, messageReceived.ConnectionId);
+
+        var responseWrapper = JsonConvert.DeserializeObject<ResponseWrapper>(messageReceived.Response);
+        Assert.NotNull(responseWrapper);
+        Assert.Equal(DigitalMakerResponseType.FullInstance, responseWrapper.ResponseType);
+
+        var messageResponse = JsonConvert.DeserializeObject<FullInstanceResponse>(responseWrapper.Content);
+        Assert.NotNull(messageResponse);
+        Assert.Equal(instanceId, messageResponse.Instance.InstanceId);
+        Assert.Equal(participantNames, messageResponse.Instance.ParticipantNames);
+    }
+
     private record ResponseDetails(string Response, string ConnectionId);
 }

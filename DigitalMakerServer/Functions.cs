@@ -26,10 +26,7 @@ public class Functions
 {
     public const string ConnectionIdField = "connectionId";
     private const string CONNECTION_TABLE_NAME_ENV = "CONNECTION_TABLE_NAME";
-    private const string MEETING_ADMIN_TABLE_NAME_ENV = "MeetingAdminTable";
-    private const string MEETING_TABLE_NAME_ENV = "MeetingTable";
     private const string INSTANCE_TABLE_NAME_ENV = "InstanceTable";
-    private const string SHOPPING_SESSION_TABLE_NAME_ENV = "ShoppingSessionTable";
 
     /// <summary>
     /// DynamoDB table used to store the open connection ids. More advanced use cases could store logged on user map to their connection id to implement direct message chatting.
@@ -47,27 +44,12 @@ public class Functions
     /// </summary>
     Func<string, IAmazonApiGatewayManagementApi> ApiGatewayManagementApiClientFactory { get; }
 
-    /// <summary>
-    /// DynamoDB context for the storage and retrieval of meeting admin objects to the database
-    /// </summary>
-    IDynamoDBContext MeetingAdminTableDDBContext { get; }
-
-    /// <summary>
-    /// DynamoDB context for the storage and retrieval of meeting objects to the database
-    /// </summary>
-    IDynamoDBContext MeetingTableDDBContext { get; }
-
 
     /// <summary>
     /// DynamoDB context for the storage and retrieval of instance objects to the database
     /// </summary>
     IDynamoDBContext InstanceTableDDBContext { get; }
 
-
-    /// <summary>
-    /// DynamoDB context for the storage and retrieval of shopping session objects to the database
-    /// </summary>
-    IDynamoDBContext ShoppingSessionTableDDBContext { get; }
 
     /// <summary>
     /// Engine to perform the calculations and operations
@@ -99,24 +81,6 @@ public class Functions
 
         var config = new DynamoDBContextConfig { Conversion = DynamoDBEntryConversion.V2 };
 
-        // Now check to see if an meeting admin table name was passed in through environment variables and if so 
-        // add the table mapping.
-        var meetingAdminTableName = System.Environment.GetEnvironmentVariable(MEETING_ADMIN_TABLE_NAME_ENV);
-        if (!string.IsNullOrEmpty(meetingAdminTableName))
-        {
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(MeetingAdminStorage)] = new Amazon.Util.TypeMapping(typeof(MeetingAdminStorage), meetingAdminTableName);
-        }
-        this.MeetingAdminTableDDBContext = new DynamoDBContext(this.DDBClient, config);
-
-        // Now check to see if an meetings table name was passed in through environment variables and if so 
-        // add the table mapping.
-        var meetingTableName = System.Environment.GetEnvironmentVariable(MEETING_TABLE_NAME_ENV);
-        if (!string.IsNullOrEmpty(meetingTableName))
-        {
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(MeetingStorage)] = new Amazon.Util.TypeMapping(typeof(MeetingStorage), meetingTableName);
-        }
-        this.MeetingTableDDBContext = new DynamoDBContext(this.DDBClient, config);
-
         // Now check to see if an instances table name was passed in through environment variables and if so 
         // add the table mapping.
         var instanceTableName = System.Environment.GetEnvironmentVariable(INSTANCE_TABLE_NAME_ENV);
@@ -126,24 +90,9 @@ public class Functions
         }
         this.InstanceTableDDBContext = new DynamoDBContext(this.DDBClient, config);
 
-        // Now check to see if an shopping sessions table name was passed in through environment variables and if so 
-        // add the table mapping.
-        var shoppingSessionTableName = System.Environment.GetEnvironmentVariable(SHOPPING_SESSION_TABLE_NAME_ENV);
-        if (!string.IsNullOrEmpty(shoppingSessionTableName))
-        {
-            AWSConfigsDynamoDB.Context.TypeMappings[typeof(ShoppingSessionStorage)] = new Amazon.Util.TypeMapping(typeof(ShoppingSessionStorage), shoppingSessionTableName);
-        }
-        this.ShoppingSessionTableDDBContext = new DynamoDBContext(this.DDBClient, config);
-
-        var secretHasher = new SecretHasher();
-
         // New up a digital maker engine for use in the lifetime of this running
         this.DigitalMakerEngine = new DigitalMakerEngine(
-            this.MeetingAdminTableDDBContext,
-            this.MeetingTableDDBContext,
-            this.InstanceTableDDBContext,
-            this.ShoppingSessionTableDDBContext,
-            secretHasher);
+            this.InstanceTableDDBContext);
     }
 
     /// <summary>
@@ -154,26 +103,15 @@ public class Functions
     /// <param name="connectionMappingTable"></param>
     public Functions(IAmazonDynamoDB ddbClient,
         Func<string, IAmazonApiGatewayManagementApi> apiGatewayManagementApiClientFactory,
-        IDynamoDBContext meetingAdminTableDDBContext,
-        IDynamoDBContext meetingTableDDBContext,
         IDynamoDBContext instanceTableDDBContext,
-        IDynamoDBContext shoppingSessionTableDDBContext,
-        ISecretHasher secretHasher,
         string connectionMappingTable)
     {
         this.DDBClient = ddbClient;
         this.ApiGatewayManagementApiClientFactory = apiGatewayManagementApiClientFactory;
-        this.MeetingAdminTableDDBContext = meetingAdminTableDDBContext;
-        this.MeetingTableDDBContext = meetingTableDDBContext;
         this.InstanceTableDDBContext = instanceTableDDBContext;
-        this.ShoppingSessionTableDDBContext = shoppingSessionTableDDBContext;
         this.ConnectionMappingTable = connectionMappingTable;
         this.DigitalMakerEngine = new DigitalMakerEngine(
-            this.MeetingAdminTableDDBContext, 
-            this.MeetingTableDDBContext, 
-            this.InstanceTableDDBContext, 
-            this.ShoppingSessionTableDDBContext,
-            secretHasher);
+            this.InstanceTableDDBContext);
     }
 
     public async Task<APIGatewayProxyResponse> OnConnectHandler(APIGatewayProxyRequest request, ILambdaContext context)
@@ -211,7 +149,6 @@ public class Functions
             };
         }
     }
-
 
     public async Task<APIGatewayProxyResponse> SendMessageHandler(APIGatewayProxyRequest request, ILambdaContext context)
     {
@@ -263,78 +200,6 @@ public class Functions
                 List<ResponseWithClientId> responsesWithClientIds;
                 switch (requestWrapper.RequestType)
                 {
-                    case RequestType.LoginMeetingAdmin:
-                        var loginMeetingAdminRequest = JsonConvert.DeserializeObject<LoginMeetingAdminRequest>(requestWrapper.Content);
-                        if (loginMeetingAdminRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid LoginMeetingAdminRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.LoginMeetingAdminAsync(loginMeetingAdminRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.CreateMeeting:
-                        var createMeetingRequest = JsonConvert.DeserializeObject<CreateMeetingRequest>(requestWrapper.Content);
-                        if (createMeetingRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid CreateMeetingRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.CreateMeetingAsync(createMeetingRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.JoinMeetingAsAdmin:
-                        var joinMeetingAsAdminRequest = JsonConvert.DeserializeObject<JoinMeetingAsAdminRequest>(requestWrapper.Content);
-                        if (joinMeetingAsAdminRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid JoinMeetingAsAdminRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.JoinMeetingAsAdminAsync(joinMeetingAsAdminRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.JoinMeeting:
-                        var joinMeetingRequest = JsonConvert.DeserializeObject<JoinMeetingRequest>(requestWrapper.Content);
-                        if (joinMeetingRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid JoinMeetingRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.JoinMeetingAsync(joinMeetingRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.GetParticipantsForMeeting:
-                        var getParticipantsForMeetingRequest = JsonConvert.DeserializeObject<GetParticipantsForMeetingRequest>(requestWrapper.Content);
-                        if (getParticipantsForMeetingRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid GetParticipantsForMeetingRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.GetParticipantsForMeetingAsync(getParticipantsForMeetingRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.JoinNewParticipant:
-                        var joinNewParticipantRequest = JsonConvert.DeserializeObject<JoinNewParticipantRequest>(requestWrapper.Content);
-                        if (joinNewParticipantRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid JoinNewParticipantRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.JoinNewParticipantAsync(joinNewParticipantRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.RejoinMeetingAndParticipantWithLoginCipher:
-                        var rejoinMeetingAndParticipantWithLoginCipherRequest = JsonConvert.DeserializeObject<RejoinMeetingAndParticipantWithLoginCipherRequest>(requestWrapper.Content);
-                        if (rejoinMeetingAndParticipantWithLoginCipherRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid RejoinMeetingAndParticipantWithLoginCipherRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.RejoinMeetingAndParticipantWithLoginCipherAsync(rejoinMeetingAndParticipantWithLoginCipherRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.RejoinParticipantWithPassword:
-                        var rejoinParticipantWithPasswordRequest = JsonConvert.DeserializeObject<RejoinParticipantWithPasswordRequest>(requestWrapper.Content);
-                        if (rejoinParticipantWithPasswordRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid RejoinParticipantWithPasswordRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.RejoinParticipantWithPasswordAsync(rejoinParticipantWithPasswordRequest, connectionId, context.Logger);
-                        break;
                     case RequestType.GetOrCreateInstance:
                         var getOrCreateInstanceRequest = JsonConvert.DeserializeObject<GetOrCreateInstanceRequest>(requestWrapper.Content);
                         if (getOrCreateInstanceRequest == null)
@@ -343,15 +208,6 @@ public class Functions
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.GetOrCreateInstanceAsync(getOrCreateInstanceRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.ReconnectInstanceAdmin:
-                        var reconnectInstanceAdminRequest = JsonConvert.DeserializeObject<ReconnectInstanceAdminRequest>(requestWrapper.Content);
-                        if (reconnectInstanceAdminRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid ReconnectInstanceAdminRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectInstanceAdminAsync(reconnectInstanceAdminRequest, connectionId, context.Logger);
                         break;
                     case RequestType.AddNewInputEventHandler:
                         var addNewInputEventHandlerRequest = JsonConvert.DeserializeObject<AddNewInputEventHandlerRequest>(requestWrapper.Content);
@@ -362,32 +218,14 @@ public class Functions
                         }
                         responsesWithClientIds = await this.DigitalMakerEngine.AddNewInputEventHandlerAsync(addNewInputEventHandlerRequest, connectionId, context.Logger);
                         break;
-                    case RequestType.StartCheckout:
-                        var startCheckoutRequest = JsonConvert.DeserializeObject<StartCheckoutRequest>(requestWrapper.Content);
-                        if (startCheckoutRequest == null)
+                    case RequestType.ConnectOutputReceiver:
+                        var connectOutputReceiverRequest = JsonConvert.DeserializeObject<ConnectOutputReceiverRequest>(requestWrapper.Content);
+                        if (connectOutputReceiverRequest == null)
                         {
-                            context.Logger.LogLine("Root request content was not a valid StartCheckoutRequest");
+                            context.Logger.LogLine("Root request content was not a valid ConnectOutputReceiverRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.StartCheckoutAsync(startCheckoutRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.ReconnectCheckout:
-                        var reconnectCheckoutRequest = JsonConvert.DeserializeObject<ReconnectCheckoutRequest>(requestWrapper.Content);
-                        if (reconnectCheckoutRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid ReconnectCheckoutRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ReconnectCheckoutAsync(reconnectCheckoutRequest, connectionId, context.Logger);
-                        break;
-                    case RequestType.ConnectCustomerScanner:
-                        var connectCustomerScannerRequest = JsonConvert.DeserializeObject<ConnectCustomerScannerRequest>(requestWrapper.Content);
-                        if (connectCustomerScannerRequest == null)
-                        {
-                            context.Logger.LogLine("Root request content was not a valid ConnectCustomerScannerRequest");
-                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectCustomerScannerAsync(connectCustomerScannerRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectOutputReceiverAsync(connectOutputReceiverRequest, connectionId, context.Logger);
                         break;
                     case RequestType.InputReceived:
                         throw new NotImplementedException();

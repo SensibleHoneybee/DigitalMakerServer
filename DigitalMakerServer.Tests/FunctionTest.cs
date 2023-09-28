@@ -37,10 +37,6 @@ public class FunctionTest
             _mockDDBClient.Object,
             (endpoint) => _mockApiGatewayClient.Object,
             new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<ISecretHasher>().Object,
             tableName);
 
         var lambdaContext = new TestLambdaContext();
@@ -75,10 +71,6 @@ public class FunctionTest
         var functions = new Functions(_mockDDBClient.Object,
             (endpoint) => _mockApiGatewayClient.Object,
             new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<ISecretHasher>().Object,
             tableName);
 
         var lambdaContext = new TestLambdaContext();
@@ -136,10 +128,6 @@ public class FunctionTest
         var functions = new Functions(_mockDDBClient.Object,
             apiGatewayFactory,
             new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<IDynamoDBContext>().Object,
-            new Mock<ISecretHasher>().Object,
             tableName);
 
         var lambdaContext = new TestLambdaContext();

@@ -1,7 +1,6 @@
-﻿using System.Text;
-using System.Text.RegularExpressions;
-using DigitalMakerApi.Models;
+﻿using DigitalMakerApi.Models;
 using IronPython.Hosting;
+using IronPython.Runtime;
 using Microsoft.Extensions.Logging;
 
 namespace DigitalMakerPythonInterface
@@ -27,12 +26,6 @@ namespace DigitalMakerPythonInterface
             var engine = Python.CreateEngine();
             var scope = engine.CreateScope();
 
-            // Initialize the variables in python
-            foreach (var variable in pythonInputData.Variables)
-            {
-                scope.SetVariable(variable.Name, variable.Value);
-            }
-
             var actualPythonScript = defaultPythonScript
                 .Replace("{{{USER_CODE}}}", userSuppliedPythonCode);
 
@@ -47,13 +40,36 @@ namespace DigitalMakerPythonInterface
                 throw new InvalidOperationException(msg);
             }
 
-            // Update our variables with their new values
-            foreach (var variable in pythonInputData.Variables)
+            var outputsInvoked = scope.GetVariable<PythonList>("outputs_invoked").ToList();
+            var outputActions = new List<OutputAction>();
+            foreach (var outputInvoked in outputsInvoked)
             {
-                variable.Value = scope.GetVariable(variable.Name);
+                var pythonDict = outputInvoked as PythonDictionary;
+                if (pythonDict == null) {
+                    var msg = "Unexpected error: Output from python script that wasn't a PythonDictionary";
+                    _logger.LogError(msg);
+                    throw new InvalidOperationException(msg);
+                }
+
+                var dict = pythonDict.ToDictionary(x => Convert.ToString(x.Key) ?? string.Empty, x => Convert.ToString(x.Value) ?? string.Empty);
+
+                if (!dict.TryGetValue("name", out var name) || !dict.TryGetValue("parameter", out var parameter))
+                {
+                    var msg = $"Unexpected error: Output from python script didn't have a name and/or parameter. Values: {dict.Select(x => x.Key + '/' + x.Value)}";
+                    _logger.LogError(msg);
+                    throw new InvalidOperationException(msg);
+                }
+
+                outputActions.Add(new OutputAction { ActionName = name.Trim('\"'), Argument = parameter.Trim('\"') });
             }
 
-            return new PythonOutputData(pythonInputData.Variables, new List<OutputAction>());
+            // TODO - Might need to use this for action finding
+            ////foreach (var variable in pythonInputData.Variables)
+            ////{
+            ////    variable.Value = scope.GetVariable(variable.Name);
+            ////}
+
+            return new PythonOutputData(outputActions);
         }
     }
 }
