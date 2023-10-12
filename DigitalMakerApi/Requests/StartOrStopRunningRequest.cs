@@ -1,9 +1,9 @@
 ﻿namespace DigitalMakerApi.Requests
 {
-    public class CreateInstanceRequest
+    public class StartOrStopRunningRequest
     {
         public string InstanceId { get; set; } = string.Empty;
 
-        public string ParticipantNames { get; set; } = string.Empty;
+        public bool Run { get; set; } = false;
     }
 }

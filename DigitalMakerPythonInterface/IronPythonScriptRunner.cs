@@ -26,6 +26,13 @@ namespace DigitalMakerPythonInterface
             var engine = Python.CreateEngine();
             var scope = engine.CreateScope();
 
+            var path = Path.Combine(Directory.GetCurrentDirectory(), "Lib");
+            var libs = new[] {
+              path
+            };
+
+            engine.SetSearchPaths(libs);
+
             var actualPythonScript = defaultPythonScript
                 .Replace("{{{USER_CODE}}}", userSuppliedPythonCode);
 
@@ -62,12 +69,6 @@ namespace DigitalMakerPythonInterface
 
                 outputActions.Add(new OutputAction { ActionName = name.Trim('\"'), Argument = parameter.Trim('\"') });
             }
-
-            // TODO - Might need to use this for action finding
-            ////foreach (var variable in pythonInputData.Variables)
-            ////{
-            ////    variable.Value = scope.GetVariable(variable.Name);
-            ////}
 
             return new PythonOutputData(outputActions);
         }

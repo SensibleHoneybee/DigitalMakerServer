@@ -200,14 +200,23 @@ public class Functions
                 List<ResponseWithClientId> responsesWithClientIds;
                 switch (requestWrapper.RequestType)
                 {
-                    case RequestType.GetOrCreateInstance:
-                        var getOrCreateInstanceRequest = JsonConvert.DeserializeObject<GetOrCreateInstanceRequest>(requestWrapper.Content);
-                        if (getOrCreateInstanceRequest == null)
+                    case RequestType.CreateInstance:
+                        var createInstanceRequest = JsonConvert.DeserializeObject<CreateInstanceRequest>(requestWrapper.Content);
+                        if (createInstanceRequest == null)
                         {
                             context.Logger.LogLine("Root request content was not a valid CreateInstanceRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.GetOrCreateInstanceAsync(getOrCreateInstanceRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.CreateInstanceAsync(createInstanceRequest, connectionId, context.Logger));
+                        break;
+                    case RequestType.ConnectToInstance:
+                        var connectToInstanceRequest = JsonConvert.DeserializeObject<ConnectToInstanceRequest>(requestWrapper.Content);
+                        if (connectToInstanceRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ConnectToInstanceRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.ConnectToInstanceAsync(connectToInstanceRequest, connectionId, context.Logger));
                         break;
                     case RequestType.AddNewInputEventHandler:
                         var addNewInputEventHandlerRequest = JsonConvert.DeserializeObject<AddNewInputEventHandlerRequest>(requestWrapper.Content);
@@ -216,27 +225,53 @@ public class Functions
                             context.Logger.LogLine("Root request content was not a valid AddNewInputEventHandlerRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.AddNewInputEventHandlerAsync(addNewInputEventHandlerRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.AddNewInputEventHandlerAsync(addNewInputEventHandlerRequest, connectionId, context.Logger));
                         break;
-                    case RequestType.ConnectOutputReceiver:
-                        var connectOutputReceiverRequest = JsonConvert.DeserializeObject<ConnectOutputReceiverRequest>(requestWrapper.Content);
-                        if (connectOutputReceiverRequest == null)
+                    case RequestType.DeleteInputEventHandler:
+                        var deleteInputEventHandlerRequest = JsonConvert.DeserializeObject<DeleteInputEventHandlerRequest>(requestWrapper.Content);
+                        if (deleteInputEventHandlerRequest == null)
                         {
-                            context.Logger.LogLine("Root request content was not a valid ConnectOutputReceiverRequest");
+                            context.Logger.LogLine("Root request content was not a valid DeleteInputEventHandlerRequest");
                             return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
                         }
-                        responsesWithClientIds = await this.DigitalMakerEngine.ConnectOutputReceiverAsync(connectOutputReceiverRequest, connectionId, context.Logger);
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.DeleteInputEventHandlerAsync(deleteInputEventHandlerRequest, connectionId, context.Logger));
+                        break;
+                    case RequestType.UpdateCode:
+                        var updateCodeRequest = JsonConvert.DeserializeObject<UpdateCodeRequest>(requestWrapper.Content);
+                        if (updateCodeRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid UpdateCodeRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.UpdateCodeAsync(updateCodeRequest, connectionId, context.Logger));
+                        break;
+                    case RequestType.StartOrStopRunning:
+                        var startOrStopRunningRequest = JsonConvert.DeserializeObject<StartOrStopRunningRequest>(requestWrapper.Content);
+                        if (startOrStopRunningRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid StartOrStopRunningRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.StartOrStopRunningAsync(startOrStopRunningRequest, connectionId, context.Logger));
+                        break;
+                    case RequestType.ConnectInputOutputDevice:
+                        var connectInputOutputDeviceRequest = JsonConvert.DeserializeObject<ConnectInputOutputDeviceRequest>(requestWrapper.Content);
+                        if (connectInputOutputDeviceRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid ConnectInputOutputDeviceRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await TryMultipleTimesAsync(() => this.DigitalMakerEngine.ConnectInputOutputDeviceAsync(connectInputOutputDeviceRequest, connectionId, context.Logger));
                         break;
                     case RequestType.InputReceived:
-                        throw new NotImplementedException();
-                        ////var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
-                        ////if (inputReceivedRequest == null)
-                        ////{
-                        ////    context.Logger.LogLine("Root request content was not a valid InputReceivedRequest");
-                        ////    return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
-                        ////}
-                        ////responsesWithClientIds = await this.DigitalMakerEngine.HandleInputReceivedAsync(inputReceivedRequest, connectionId, context.Logger);
-                        ////break;
+                        var inputReceivedRequest = JsonConvert.DeserializeObject<InputReceivedRequest>(requestWrapper.Content);
+                        if (inputReceivedRequest == null)
+                        {
+                            context.Logger.LogLine("Root request content was not a valid InputReceivedRequest");
+                            return new APIGatewayProxyResponse { StatusCode = (int)HttpStatusCode.BadRequest };
+                        }
+                        responsesWithClientIds = await this.DigitalMakerEngine.HandleInputReceivedAsync(inputReceivedRequest, connectionId, context.Logger);
+                        break;
                     default:
                         throw new Exception($"Unknown message request type: {requestWrapper.RequestType}");
                 }
@@ -294,7 +329,7 @@ public class Functions
             catch (Exception e1)
             {
                 var apiClient = ApiGatewayManagementApiClientFactory(endpoint);
-                var errorResponse = new ErrorResponse { Message = e1.Message };
+                var errorResponse = new ErrorResponse { Message = e1.Message + "\r\n" + e1.StackTrace };
                 var encodedResponse = new { ResponseType = errorResponse.ResponseType, Content = JsonConvert.SerializeObject(errorResponse) };
                 var responseJson = JsonConvert.SerializeObject(encodedResponse);
                 await SendMessageToClient(connectionId, responseJson, apiClient, context);
@@ -347,6 +382,25 @@ public class Functions
                 Body = $"Failed to disconnect: {e.Message}"
             };
         }
+    }
+
+    private static async Task<T> TryMultipleTimesAsync<T>(Func<Task<T>> funcToTryAsync)
+    {
+        var failureCounter = 0;
+        while (failureCounter < 10)
+        {
+            try
+            {
+                return await funcToTryAsync();
+            }
+            catch (ConditionalCheckFailedException)
+            {
+                Thread.Sleep(200);
+                failureCounter++;
+            }
+        }
+
+        throw new InvalidOperationException("Conditional check failed 10 times");
     }
 
     private async Task SendMessageToClient(string connectionId, string responseJson, IAmazonApiGatewayManagementApi apiClient, ILambdaContext context)

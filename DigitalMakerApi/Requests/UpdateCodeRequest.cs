@@ -1,6 +1,6 @@
 ﻿namespace DigitalMakerApi.Requests
 {
-    public class AddNewInputEventHandlerRequest
+    public class UpdateCodeRequest
     {
         public string InstanceId { get; set; } = string.Empty;
 

@@ -9,5 +9,7 @@
         public List<InputEventHandler> InputEventHandlers { get; set; } = new List<InputEventHandler>();
 
         public List<OutputReceiver> OutputReceivers { get; set; } = new List<OutputReceiver>();
+
+        public bool IsRunning { get; set; } = false;
     }
 }

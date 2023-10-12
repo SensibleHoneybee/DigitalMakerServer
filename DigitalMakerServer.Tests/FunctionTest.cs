@@ -9,6 +9,7 @@ using Amazon.DynamoDBv2.Model;
 using Amazon.ApiGatewayManagementApi;
 using Amazon.ApiGatewayManagementApi.Model;
 using Amazon.DynamoDBv2.DataModel;
+using System.Text.RegularExpressions;
 
 namespace DigitalMakerServer.Tests;
 
