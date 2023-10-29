@@ -348,6 +348,10 @@ namespace DigitalMakerServer
             var pythonInputData = new PythonInputData
             {
                 // No variables in the current version of the system
+                Variables = new List<Variable>
+                {
+                    new Variable { Name = "data", Value = request.Data }
+                }
             };
 
             var pythonOutputData = await pythonScriptRunner.RunPythonProcessAsync(eventHandler.PythonCode, pythonInputData);
@@ -366,7 +370,7 @@ namespace DigitalMakerServer
 
             foreach (var outputAction in pythonOutputData.OutputActions)
             {
-                var response3 = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Output {outputAction.ActionName} was called with data '{data}'" };
+                var response3 = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Output {outputAction.ActionName} was called with data '{request.Data}'" };
                 responsesWithClientId.Add(new ResponseWithClientId(response3, instanceStorage.InstanceAdminConnectionId));
 
                 var sanitisedActionName = RemoveWhiteSpace(outputAction.ActionName);

@@ -33,6 +33,12 @@ namespace DigitalMakerPythonInterface
 
             engine.SetSearchPaths(libs);
 
+            // Initialize the variables in python
+            foreach (var variable in pythonInputData.Variables)
+            {
+                scope.SetVariable(variable.Name, variable.Value);
+            }
+
             var actualPythonScript = defaultPythonScript
                 .Replace("{{{USER_CODE}}}", userSuppliedPythonCode);
 
