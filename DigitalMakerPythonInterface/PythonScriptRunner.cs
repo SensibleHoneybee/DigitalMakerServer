@@ -1,11 +1,12 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace DigitalMakerPythonInterface
 {
     public interface IPythonScriptRunner
     {
-        Task<PythonOutputData> RunPythonProcessAsync(string userSuppliedPythonCode, PythonInputData pythonData);
+        Task<PythonOutputData> RunPythonProcessAsync(string userSuppliedPythonCode, PythonInputData pythonInputData);
     }
 
     ////public class PythonScriptRunner : IPythonScriptRunner

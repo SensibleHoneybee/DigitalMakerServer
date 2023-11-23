@@ -10,6 +10,6 @@
 
         public List<OutputReceiver> OutputReceivers { get; set; } = new List<OutputReceiver>();
 
-        public bool IsRunning { get; set; } = false;
+        public string VersionIdentifier { get; set; } = string.Empty;
     }
 }

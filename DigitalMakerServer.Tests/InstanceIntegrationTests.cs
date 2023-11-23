@@ -361,6 +361,7 @@ public class InstanceIntegrationTests
         Assert.Equal(participantNames, messageResponse.Instance.ParticipantNames);
     }
 
+    [Fact]
     public async Task TestConnectToInstanceDoesNotExist()
     {
         Mock<IAmazonDynamoDB> _mockDDBClient = new Mock<IAmazonDynamoDB>();

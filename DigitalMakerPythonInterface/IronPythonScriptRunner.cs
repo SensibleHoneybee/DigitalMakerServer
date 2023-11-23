@@ -24,6 +24,7 @@ namespace DigitalMakerPythonInterface
             var defaultPythonScript = this._pythonScriptProvider.GetPythonScript();
 
             var engine = Python.CreateEngine();
+
             var scope = engine.CreateScope();
 
             var path = Path.Combine(Directory.GetCurrentDirectory(), "Lib");

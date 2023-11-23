@@ -6,20 +6,20 @@ namespace DigitalMakerServer
 {
     public interface IDigitalMakerEngine
     {
-        Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger);
+        Task CreateInstanceAsync(CreateInstanceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> ConnectToInstanceAsync(ConnectToInstanceRequest request, string connectionId, ILambdaLogger logger);
+        Task ConnectToInstanceAsync(ConnectToInstanceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> AddNewInputEventHandlerAsync(AddNewInputEventHandlerRequest request, string connectionId, ILambdaLogger logger);
+        Task AddNewInputEventHandlerAsync(AddNewInputEventHandlerRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> DeleteInputEventHandlerAsync(DeleteInputEventHandlerRequest request, string connectionId, ILambdaLogger logger);
+        Task DeleteInputEventHandlerAsync(DeleteInputEventHandlerRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> UpdateCodeAsync(UpdateCodeRequest request, string connectionId, ILambdaLogger logger);
+        Task UpdateCodeAsync(UpdateCodeRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> StartOrStopRunningAsync(StartOrStopRunningRequest request, string connectionId, ILambdaLogger logger);
+        Task ConnectInputOutputDeviceAsync(ConnectInputOutputDeviceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> ConnectInputOutputDeviceAsync(ConnectInputOutputDeviceRequest request, string connectionId, ILambdaLogger logger);
+        Task HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
 
-        Task<List<ResponseWithClientId>> HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, ILambdaLogger logger);
+        void HandleConnectionTestNumber(ConnectionTestNumberRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger);
     }
 }

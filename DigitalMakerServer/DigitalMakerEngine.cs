@@ -6,6 +6,7 @@ using DigitalMakerApi.Requests;
 using DigitalMakerApi.Responses;
 using DigitalMakerPythonInterface;
 using Newtonsoft.Json;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace DigitalMakerServer
@@ -14,13 +15,15 @@ namespace DigitalMakerServer
     {
         private readonly IDynamoDBContext instanceTableDDBContext;
 
-        public DigitalMakerEngine(
-            IDynamoDBContext instanceTableDDBContext)
+        private readonly IWordGenerator wordGenerator;
+
+        public DigitalMakerEngine(IDynamoDBContext instanceTableDDBContext, IWordGenerator wordGenerator)
         {
             this.instanceTableDDBContext = instanceTableDDBContext;
+            this.wordGenerator = wordGenerator;
         }
 
-        public async Task<List<ResponseWithClientId>> CreateInstanceAsync(CreateInstanceRequest request, string connectionId, ILambdaLogger logger)
+        public async Task CreateInstanceAsync(CreateInstanceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
 
@@ -37,6 +40,8 @@ namespace DigitalMakerServer
 
             logger.LogLine($"Created instance bits. ID: {instance.InstanceId}. Name: {instance.ParticipantNames}");
 
+            instance.VersionIdentifier = this.wordGenerator.GetWords();
+
             // And create wrapper to store it in DynamoDB
             instanceStorage = new InstanceStorage
             {
@@ -49,23 +54,23 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instanceStorage.Id}");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new InstanceCreatedResponse();
-
             // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(
+                    new InstanceCreatedResponse(),
+                    connectionId));
         }
 
-        public async Task<List<ResponseWithClientId>> ConnectToInstanceAsync(ConnectToInstanceRequest request, string connectionId, ILambdaLogger logger)
+        public async Task ConnectToInstanceAsync(ConnectToInstanceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
-
             if (instanceStorage == null)
             {
                 // No instance yet for this participant.
-                var notCreatedResponse = new InstanceDoesNotExistResponse();
-
                 // Response should be sent only to the caller
-                return new[] { new ResponseWithClientId(notCreatedResponse, connectionId) }.ToList();
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new InstanceDoesNotExistResponse(), connectionId));
+                return;
             }
 
             var possibleInstance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
@@ -76,20 +81,23 @@ namespace DigitalMakerServer
 
             var instance = possibleInstance;
 
-            // And we need to update the instance with the latest connection ID if different
-            if (instanceStorage.InstanceAdminConnectionId != connectionId)
+            instance.VersionIdentifier = this.wordGenerator.GetWords();
+            instanceStorage.Content = JsonConvert.SerializeObject(instance);
+            instanceStorage.InstanceAdminConnectionId = connectionId;
+            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+
+            // Response should be sent to the caller and all client consoles
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, connectionId));
+
+            foreach (var outputReceiver in instance.OutputReceivers)
             {
-                instanceStorage.InstanceAdminConnectionId = connectionId;
-                await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, outputReceiver.ConnectionId));
             }
-
-            var response = new FullInstanceResponse { Instance = instance };
-
-            // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
         }
 
-        public async Task<List<ResponseWithClientId>> AddNewInputEventHandlerAsync(AddNewInputEventHandlerRequest request, string connectionId, ILambdaLogger logger)
+        public async Task AddNewInputEventHandlerAsync(AddNewInputEventHandlerRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.InstanceId))
             {
@@ -104,7 +112,7 @@ namespace DigitalMakerServer
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
             if (instanceStorage.InstanceAdminConnectionId != connectionId)
             {
-                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect.");
+                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect by refreshing your browser.");
             }
 
             var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
@@ -120,6 +128,8 @@ namespace DigitalMakerServer
 
             instance.InputEventHandlers.Add(new InputEventHandler { NameOfEvent = request.InputEventHandlerName, PythonCode = request.PythonCode });
 
+            instance.VersionIdentifier = this.wordGenerator.GetWords();
+
             // Update the game in the DB
             instanceStorage.Content = JsonConvert.SerializeObject(instance);
 
@@ -127,13 +137,18 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new FullInstanceResponse { Instance = instance };
+            // Response should be sent to the caller and all client consoles
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, connectionId));
 
-            // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            foreach (var outputReceiver in instance.OutputReceivers)
+            {
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, outputReceiver.ConnectionId));
+            }
         }
 
-        public async Task<List<ResponseWithClientId>> DeleteInputEventHandlerAsync(DeleteInputEventHandlerRequest request, string connectionId, ILambdaLogger logger)
+        public async Task DeleteInputEventHandlerAsync(DeleteInputEventHandlerRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.InstanceId))
             {
@@ -148,7 +163,7 @@ namespace DigitalMakerServer
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
             if (instanceStorage.InstanceAdminConnectionId != connectionId)
             {
-                throw new Exception("You have attempted to delete input handler from a screen that is not the instance admin. Please reconnect.");
+                throw new Exception("You have attempted to delete input handler from a screen that is not the instance admin. Please reconnect by refreshing your browser.");
             }
 
             var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
@@ -168,6 +183,8 @@ namespace DigitalMakerServer
                 instance.InputEventHandlers.Remove(handlerToRemove);
             }
 
+            instance.VersionIdentifier = this.wordGenerator.GetWords();
+
             // Update the game in the DB
             instanceStorage.Content = JsonConvert.SerializeObject(instance);
 
@@ -175,13 +192,18 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new FullInstanceResponse { Instance = instance };
+            // Response should be sent to the caller and all client consoles
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, connectionId));
 
-            // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            foreach (var outputReceiver in instance.OutputReceivers)
+            {
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, outputReceiver.ConnectionId));
+            }
         }
 
-        public async Task<List<ResponseWithClientId>> UpdateCodeAsync(UpdateCodeRequest request, string connectionId, ILambdaLogger logger)
+        public async Task UpdateCodeAsync(UpdateCodeRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.InstanceId))
             {
@@ -196,7 +218,7 @@ namespace DigitalMakerServer
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
             if (instanceStorage.InstanceAdminConnectionId != connectionId)
             {
-                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect.");
+                throw new Exception("You have attempted to update code from a screen that is not the instance admin. Please reconnect by refreshing your browser.");
             }
 
             var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
@@ -213,39 +235,7 @@ namespace DigitalMakerServer
 
             inputEventHandler.PythonCode = request.PythonCode;
 
-            // Update the game in the DB
-            instanceStorage.Content = JsonConvert.SerializeObject(instance);
-
-            // And save it back
-            logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
-            await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
-
-            var response = new FullInstanceResponse { Instance = instance };
-
-            // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
-        }
-
-        public async Task<List<ResponseWithClientId>> StartOrStopRunningAsync(StartOrStopRunningRequest request, string connectionId, ILambdaLogger logger)
-        {
-            if (string.IsNullOrEmpty(request.InstanceId))
-            {
-                throw new Exception("UpdateCodeRequest.InstanceId must be supplied");
-            }
-
-            var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
-            if (instanceStorage.InstanceAdminConnectionId != connectionId)
-            {
-                throw new Exception("You have attempted to add new input handler from a screen that is not the instance admin. Please reconnect.");
-            }
-
-            var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
-            if (instance == null)
-            {
-                throw new Exception($"Instance {request.InstanceId} has no valid content");
-            }
-
-            instance.IsRunning = request.Run;
+            instance.VersionIdentifier = this.wordGenerator.GetWords();
 
             // Update the game in the DB
             instanceStorage.Content = JsonConvert.SerializeObject(instance);
@@ -254,15 +244,29 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instanceStorage.Id}.");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new FullInstanceResponse { Instance = instance };
+            // Response should be sent to the caller and all client consoles
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, connectionId));
 
-            // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            foreach (var outputReceiver in instance.OutputReceivers)
+            {
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, outputReceiver.ConnectionId));
+            }
         }
 
-        public async Task<List<ResponseWithClientId>> ConnectInputOutputDeviceAsync(ConnectInputOutputDeviceRequest request, string connectionId, ILambdaLogger logger)
+        public async Task ConnectInputOutputDeviceAsync(ConnectInputOutputDeviceRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             var instanceStorage = await this.instanceTableDDBContext.LoadAsync<InstanceStorage>(request.InstanceId);
+            if (instanceStorage == null)
+            {
+                // No instance yet for this participant.
+                // Response should be sent only to the caller
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(new InstanceDoesNotExistResponse(), connectionId));
+                return;
+            }
+
             var instance = JsonConvert.DeserializeObject<Instance>(instanceStorage.Content);
             if (instance == null)
             {
@@ -301,13 +305,12 @@ namespace DigitalMakerServer
             logger.LogLine($"Saving instance with id {instance.InstanceId}.");
             await this.instanceTableDDBContext.SaveAsync<InstanceStorage>(instanceStorage);
 
-            var response = new FullInstanceResponse { Instance = instance };
-
             // Response should be sent only to the caller
-            return new[] { new ResponseWithClientId(response, connectionId) }.ToList();
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(new FullInstanceResponse { Instance = instance }, connectionId));
         }
 
-        public async Task<List<ResponseWithClientId>> HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, ILambdaLogger logger)
+        public async Task HandleInputReceivedAsync(InputReceivedRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
         {
             if (string.IsNullOrEmpty(request.InputName))
             {
@@ -328,16 +331,15 @@ namespace DigitalMakerServer
             if (eventHandler == null)
             {
                 // No input handler is not an error, as the user may not have defined one. Send back a response.
-                var response0a = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Input event {request.InputName} was called with data '{request.Data}'." };
-                var response0b = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"No input event handler found." };
-
-                var response = new NoInputHandlerResponse { InstanceId = request.InstanceId, InputName = request.InputName };
-                return new[]
-                {
-                    new ResponseWithClientId(response0a, instanceStorage.InstanceAdminConnectionId),
-                    new ResponseWithClientId(response0b, instanceStorage.InstanceAdminConnectionId),
-                    new ResponseWithClientId(response, connectionId)
-                }.ToList();
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(
+                        new UserMessageResponse { InstanceId = request.InstanceId, Message = $"{DateTime.Now.ToString("HH:mm:ss")}: Input event {request.InputName} was called with data '{request.Data}'. No input event handler found." },
+                        instanceStorage.InstanceAdminConnectionId));
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(
+                        new NoInputHandlerResponse { InstanceId = request.InstanceId, InputName = request.InputName },
+                        connectionId));
+                return;
             }
 
             var pythonScriptProviderLogger = new DigitalMakerServerLogger<PythonScriptProvider>(logger);
@@ -354,24 +356,24 @@ namespace DigitalMakerServer
                 }
             };
 
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(
+                    new UserMessageResponse { InstanceId = request.InstanceId, Message = $"{DateTime.Now.ToString("HH:mm:ss")}: Input event '{request.InputName}' was called with data '{request.Data}'. Running input handler code now." },
+                    instanceStorage.InstanceAdminConnectionId));
+
             var pythonOutputData = await pythonScriptRunner.RunPythonProcessAsync(eventHandler.PythonCode, pythonInputData);
 
             // Now convert the output requests into messages to send to output devices
             var outputReceiversByName = instance.OutputReceivers
                 .GroupBy(x => x.OutputReceiverName)
                 .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
-            var responsesWithClientId = new List<ResponseWithClientId>();
-
-            // First, notify the instance admin that the input event was called in the first place
-            var response1a = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Input event {request.InputName} was called with data '{request.Data}'" };
-            var response1b = new UserMessageResponse { InstanceId = request.InstanceId, Message = "An input event handler was found for this input." };
-            responsesWithClientId.Add(new ResponseWithClientId(response1a, instanceStorage.InstanceAdminConnectionId));
-            responsesWithClientId.Add(new ResponseWithClientId(response1b, instanceStorage.InstanceAdminConnectionId));
 
             foreach (var outputAction in pythonOutputData.OutputActions)
             {
-                var response3 = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Output {outputAction.ActionName} was called with data '{request.Data}'" };
-                responsesWithClientId.Add(new ResponseWithClientId(response3, instanceStorage.InstanceAdminConnectionId));
+                outboundMessageQueueProcessor.Enqueue(
+                    new ResponseWithClientId(
+                        new UserMessageResponse { InstanceId = request.InstanceId, Message = $"{DateTime.Now.ToString("HH:mm:ss")}: Output {outputAction.ActionName} was called with data '{outputAction.Argument}'." },
+                        instanceStorage.InstanceAdminConnectionId));
 
                 var sanitisedActionName = RemoveWhiteSpace(outputAction.ActionName);
                 if (outputReceiversByName.TryGetValue(outputAction.ActionName, out var relevantOutputReceivers))
@@ -379,17 +381,32 @@ namespace DigitalMakerServer
                     foreach (var relevantOutputReceiver in relevantOutputReceivers)
                     {
                         var data = outputAction.Argument?.ToString() ?? "";
-                        var response2 = new OutputActionResponse { InstanceId = request.InstanceId, OutputName = outputAction.ActionName, Data = data };
-                        responsesWithClientId.Add(new ResponseWithClientId(response2, relevantOutputReceiver.ConnectionId));
-
-                        // Also notify the instance admin that this was called
-                        var response4 = new UserMessageResponse { InstanceId = request.InstanceId, Message = $"Output receiver was found" };
-                        responsesWithClientId.Add(new ResponseWithClientId(response3, instanceStorage.InstanceAdminConnectionId));
+                        outboundMessageQueueProcessor.Enqueue(
+                            new ResponseWithClientId(
+                                new OutputActionResponse { InstanceId = request.InstanceId, OutputName = outputAction.ActionName, Data = data },
+                                relevantOutputReceiver.ConnectionId));
                     }
                 }
             }
-         
-            return responsesWithClientId;
+
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(
+                    new UserMessageResponse { InstanceId = request.InstanceId, Message = $"{DateTime.Now.ToString("HH:mm:ss")}: Finished running input event handler." },
+                    instanceStorage.InstanceAdminConnectionId));
+        }
+
+        public void HandleConnectionTestNumber(ConnectionTestNumberRequest request, string connectionId, OutboundMessageQueueProcessor outboundMessageQueueProcessor, ILambdaLogger logger)
+        {
+            if (string.IsNullOrEmpty(request.ConnectionTestNumber))
+            {
+                throw new Exception("ConnectionTestNumberRequest.ConnectionTestNumber must be supplied");
+            }
+
+            // No need to do very much - just echo the same number back to the caller to prove that we're here
+            outboundMessageQueueProcessor.Enqueue(
+                new ResponseWithClientId(
+                    new ConnectionTestNumberResponse { ConnectionTestNumber = request.ConnectionTestNumber },
+                    connectionId));
         }
 
         private static string RemoveWhiteSpace(string input)

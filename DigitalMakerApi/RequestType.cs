@@ -21,5 +21,7 @@
         public const string ConnectInputOutputDevice = "ConnectInputOutputDevice";
 
         public const string InputReceived = "InputReceived";
+
+        public const string ConnectionTestNumber = "ConnectionTestNumber";
     }
 }

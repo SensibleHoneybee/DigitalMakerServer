@@ -14,6 +14,8 @@
 
         public const string UserMessage = "UserMessage";
 
+        public const string ConnectionTestNumber = "ConnectionTestNumber";
+
         public const string Error = "Error";
 
         public const string Success = "Success";

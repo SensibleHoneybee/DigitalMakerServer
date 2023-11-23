@@ -23,4 +23,9 @@
     <ProjectReference Include="..\DigitalMakerApi\DigitalMakerApi.csproj" />
     <ProjectReference Include="..\DigitalMakerPythonInterface\DigitalMakerPythonInterface.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="words.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>
